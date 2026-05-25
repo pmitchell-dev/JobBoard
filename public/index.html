@@ -52,6 +52,15 @@
           <span class="backup-dot"></span>
           <span class="backup-label">Backed up</span>
         </div>
+        <button class="btn-icon-text" id="exportBtn" onclick="exportData()" title="Export all data to a .jobboard file">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Export
+        </button>
+        <label class="btn-icon-text btn-import-label" title="Import a .jobboard file">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          Import
+          <input type="file" id="importFileInput" accept=".jobboard,.zip" class="hidden" onchange="promptImport(event)" />
+        </label>
         <button class="btn-notepad" id="notepadBtn" onclick="toggleNotepad()" title="Quick Notes" aria-label="Open quick notes">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -314,6 +323,40 @@
         <div class="footer-spacer"></div>
         <button class="btn-secondary" onclick="closeEditModal()">Cancel</button>
         <button class="btn-primary" onclick="saveEditJob()">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Import Options Modal ────────────────────────────────────────── -->
+  <div class="modal-overlay hidden" id="importModal" onclick="handleOverlayClick(event,'importModal')">
+    <div class="modal modal-import" role="dialog" aria-modal="true" aria-labelledby="importModalTitle">
+      <div class="modal-header">
+        <h2 id="importModalTitle" class="modal-title">Import JobBoard Data</h2>
+        <button class="modal-close-btn" onclick="closeImportModal()" aria-label="Close">&#x2715;</button>
+      </div>
+      <div class="modal-body">
+        <div class="import-summary" id="importSummary">
+          <!-- populated by JS -->
+        </div>
+        <div class="import-options">
+          <button class="import-option-card" id="importReplaceBtn" onclick="confirmImport('replace')">
+            <div class="import-option-icon">🔄</div>
+            <div class="import-option-text">
+              <strong>Replace</strong>
+              <span>Overwrite all existing data with the imported file. A backup is created first.</span>
+            </div>
+          </button>
+          <button class="import-option-card" id="importMergeBtn" onclick="confirmImport('merge')">
+            <div class="import-option-icon">🔀</div>
+            <div class="import-option-text">
+              <strong>Merge</strong>
+              <span>Add new jobs from the import without touching your existing entries. Duplicate IDs are skipped.</span>
+            </div>
+          </button>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeImportModal()">Cancel</button>
       </div>
     </div>
   </div>

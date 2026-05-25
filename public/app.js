@@ -773,6 +773,7 @@ function setupGlobalListeners() {
     if (e.key === 'Escape') {
       if (!document.getElementById('editModal').classList.contains('hidden')) closeEditModal();
       else if (!document.getElementById('addModal').classList.contains('hidden')) closeAddModal();
+      else if (!document.getElementById('importModal').classList.contains('hidden')) closeImportModal();
       else if (!document.getElementById('lightbox').classList.contains('hidden')) closeLightbox();
     }
   });
@@ -899,6 +900,106 @@ function openLightbox(e) {
 }
 function closeLightbox() { hide('lightbox'); }
 
+// ── Export / Import ─────────────────────────────────────────────────────
+
+// Kick off a server-side export download
+function exportData() {
+  const btn = document.getElementById('exportBtn');
+  btn.disabled = true;
+  btn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Exporting…`;
+  const a = document.createElement('a');
+  a.href = '/api/export';
+  a.download = '';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => {
+    btn.disabled = false;
+    btn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export`;
+    toast('Export downloaded ✓', 'success');
+  }, 1500);
+}
+
+// State for the pending import
+let _importFile = null;
+
+// Called when user picks a file — show summary then open import options modal
+async function promptImport(event) {
+  const file = event.target.files[0];
+  event.target.value = ''; // allow re-selecting the same file
+  if (!file) return;
+  _importFile = file;
+
+  const sizeMB = (file.size / 1024 / 1024).toFixed(1);
+  document.getElementById('importSummary').innerHTML = `
+    <div class="import-file-info">
+      <div class="import-file-icon">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+      </div>
+      <div>
+        <div class="import-file-name">${esc(file.name)}</div>
+        <div class="import-file-size">${sizeMB} MB &mdash; Choose how to import:</div>
+      </div>
+    </div>`;
+
+  // Re-enable buttons in case a previous attempt left them disabled
+  document.getElementById('importReplaceBtn').disabled = false;
+  document.getElementById('importMergeBtn').disabled   = false;
+  show('importModal');
+}
+
+function closeImportModal() {
+  hide('importModal');
+  _importFile = null;
+}
+
+// Called when user picks Replace or Merge
+async function confirmImport(mode) {
+  if (!_importFile) return;
+
+  const replaceBtn = document.getElementById('importReplaceBtn');
+  const mergeBtn   = document.getElementById('importMergeBtn');
+  replaceBtn.disabled = true;
+  mergeBtn.disabled   = true;
+
+  const activeBtn = mode === 'replace' ? replaceBtn : mergeBtn;
+  const origHTML  = activeBtn.innerHTML;
+  activeBtn.innerHTML = `<div class="import-option-icon">⏳</div><div class="import-option-text"><strong>Importing…</strong><span>Please wait</span></div>`;
+
+  try {
+    const formData = new FormData();
+    formData.append('file', _importFile);
+    formData.append('mode', mode);
+
+    const res  = await fetch('/api/import', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || res.statusText);
+
+    closeImportModal();
+    await loadJobs();
+    renderBoard();
+    renderStats();
+    applyFilter();
+    loadBackupStatus();
+
+    if (mode === 'replace') {
+      toast(`✅ Replaced — ${data.added} job${data.added !== 1 ? 's' : ''} loaded`, 'success');
+    } else {
+      const skipMsg = data.skipped > 0 ? `, ${data.skipped} skipped (already existed)` : '';
+      toast(`✅ Merged — ${data.added} job${data.added !== 1 ? 's' : ''} added${skipMsg}`, 'success');
+    }
+  } catch (err) {
+    toast('Import failed: ' + err.message, 'error');
+    activeBtn.innerHTML = origHTML;
+    replaceBtn.disabled = false;
+    mergeBtn.disabled   = false;
+  }
+}
+
 // ── Backup status ─────────────────────────────────────────────────────────
 async function loadBackupStatus() {
   try {
@@ -920,6 +1021,7 @@ function handleOverlayClick(e, id) {
   if (e.target.id === id) {
     if (id === 'addModal') closeAddModal();
     else if (id === 'editModal') closeEditModal();
+    else if (id === 'importModal') closeImportModal();
   }
 }
 function show(id) { document.getElementById(id).classList.remove('hidden'); }

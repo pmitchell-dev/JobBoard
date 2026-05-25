@@ -3,6 +3,9 @@ const fs = require('fs');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const puppeteer = require('puppeteer');
+const archiver = require('archiver');
+const unzipper = require('unzipper');
+const multer  = require('multer');
 
 const app = express();
 const PORT = 3000;
@@ -379,6 +382,141 @@ app.get('/api/backup-status', (req, res) => {
     lastBackup: hasRolling ? fs.statSync(BACKUP_FILE).mtime : null,
     dailyBackups: daily,
   });
+});
+
+// ── Export / Import ───────────────────────────────────────────────────────────
+
+// GET /api/export  — download everything as a .jobboard zip
+app.get('/api/export', (req, res) => {
+  const date     = new Date().toISOString().split('T')[0];
+  const filename = `jobboard-export-${date}.jobboard`;
+
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+  const archive = archiver('zip', { zlib: { level: 6 } });
+  archive.on('error', err => {
+    console.error('[Export] Archive error:', err.message);
+    if (!res.headersSent) res.status(500).json({ error: err.message });
+  });
+  archive.pipe(res);
+
+  // Core data files
+  if (fs.existsSync(JOBS_FILE))    archive.file(JOBS_FILE,    { name: 'jobs.json' });
+  if (fs.existsSync(NOTEPAD_FILE)) archive.file(NOTEPAD_FILE, { name: 'notepad.json' });
+
+  // Cache directory (screenshots + PDFs)
+  if (fs.existsSync(CACHE_DIR)) {
+    const cacheFiles = fs.readdirSync(CACHE_DIR)
+      .filter(f => f.endsWith('.png') || f.endsWith('.pdf'));
+    cacheFiles.forEach(f => {
+      archive.file(path.join(CACHE_DIR, f), { name: `cache/${f}` });
+    });
+  }
+
+  archive.finalize();
+  console.log(`[Export] Sent ${filename}`);
+});
+
+// POST /api/import  — restore from a .jobboard zip
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits:  { fileSize: 500 * 1024 * 1024 }, // 500 MB max
+});
+
+app.post('/api/import', upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+  const mode = (req.body.mode || 'replace').toLowerCase();
+  if (mode !== 'replace' && mode !== 'merge') {
+    return res.status(400).json({ error: 'mode must be "replace" or "merge"' });
+  }
+
+  try {
+    // Read zip into memory and build a map of entry name → buffer
+    const zipBuffer = req.file.buffer;
+    const directory = await unzipper.Open.buffer(zipBuffer);
+    const entryMap  = {};
+    for (const entry of directory.files) {
+      entryMap[entry.path] = entry;
+    }
+
+    if (!entryMap['jobs.json']) {
+      return res.status(400).json({ error: 'Invalid export file — jobs.json not found inside zip' });
+    }
+
+    // Read imported data
+    const importedJobsBuf  = await entryMap['jobs.json'].buffer();
+    const importedJobs     = JSON.parse(importedJobsBuf.toString('utf8'));
+    const importedNotepadBuf = entryMap['notepad.json'] ? await entryMap['notepad.json'].buffer() : null;
+    const importedNotepad    = importedNotepadBuf ? JSON.parse(importedNotepadBuf.toString('utf8')) : null;
+
+    let added = 0, skipped = 0;
+
+    if (mode === 'replace') {
+      // Backup first
+      createBackup();
+
+      // Replace jobs
+      writeJobs(importedJobs);
+      added = importedJobs.length;
+
+      // Replace notepad
+      if (importedNotepad) {
+        fs.writeFileSync(NOTEPAD_FILE, JSON.stringify(importedNotepad, null, 2));
+      }
+
+      // Replace all cache files
+      for (const [entryPath, entry] of Object.entries(entryMap)) {
+        if (entryPath.startsWith('cache/') && (entryPath.endsWith('.png') || entryPath.endsWith('.pdf'))) {
+          const filename = path.basename(entryPath);
+          const buf = await entry.buffer();
+          fs.writeFileSync(path.join(CACHE_DIR, filename), buf);
+        }
+      }
+
+    } else {
+      // Merge: only add jobs with IDs that don't already exist
+      const existingJobs = readJobs();
+      const existingIds  = new Set(existingJobs.map(j => j.id));
+      const toAdd        = importedJobs.filter(j => !existingIds.has(j.id));
+      skipped            = importedJobs.length - toAdd.length;
+      added              = toAdd.length;
+
+      if (toAdd.length > 0) {
+        writeJobs([...existingJobs, ...toAdd]);
+
+        // Copy cache files only for newly added jobs
+        const newIds = new Set(toAdd.map(j => j.id));
+        for (const [entryPath, entry] of Object.entries(entryMap)) {
+          if (entryPath.startsWith('cache/') && (entryPath.endsWith('.png') || entryPath.endsWith('.pdf'))) {
+            const filename = path.basename(entryPath);
+            const jobId = filename.replace(/-screenshot\.png$/, '').replace(/\.pdf$/, '');
+            if (newIds.has(jobId)) {
+              const buf = await entry.buffer();
+              fs.writeFileSync(path.join(CACHE_DIR, filename), buf);
+            }
+          }
+        }
+      }
+
+      // Merge notepad: append imported text to existing with a divider
+      if (importedNotepad && importedNotepad.text) {
+        const existing = JSON.parse(fs.readFileSync(NOTEPAD_FILE, 'utf8'));
+        const combined = (existing.text || '').trim();
+        const divider  = combined ? `\n\n── Imported ${new Date().toISOString().split('T')[0]} ──\n` : '';
+        const merged   = combined + divider + importedNotepad.text;
+        fs.writeFileSync(NOTEPAD_FILE, JSON.stringify({ text: merged, updatedAt: new Date().toISOString() }, null, 2));
+      }
+    }
+
+    console.log(`[Import] mode=${mode}  added=${added}  skipped=${skipped}`);
+    res.json({ success: true, mode, added, skipped });
+
+  } catch (err) {
+    console.error('[Import] Failed:', err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── Start ────────────────────────────────────────────────────────────────────
