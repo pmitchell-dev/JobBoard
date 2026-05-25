@@ -22,7 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       libxrandr2 \
       libxshmfence1 \
       xdg-utils \
-      su-exec \
+      gosu \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Tell Puppeteer to skip bundled Chromium download and use the system one ────
@@ -35,7 +35,7 @@ WORKDIR /app
 
 # ── Install production dependencies first (layer-cache friendly) ───────────────
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm install --omit=dev
 
 # ── Copy application source ───────────────────────────────────────────────────
 COPY public/    ./public/
