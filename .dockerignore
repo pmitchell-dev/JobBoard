@@ -1,0 +1,29 @@
+# ── Dependencies (reinstalled inside image) ───────────────────────────────────
+node_modules/
+
+# ── Personal runtime data ─────────────────────────────────────────────────────
+data/jobs.backup.json
+data/notepad.backup.json
+data/backups/
+
+# ── Cache artefacts ───────────────────────────────────────────────────────────
+cache/
+
+# ── Git / CI ──────────────────────────────────────────────────────────────────
+.git/
+.gitignore
+.github/
+
+# ── Docs & config not needed at runtime ──────────────────────────────────────
+README.md
+LICENSE
+*.bat
+.env
+*.env
+.env.*
+
+# ── OS / editor noise ─────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

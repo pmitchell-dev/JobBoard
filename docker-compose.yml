@@ -1,0 +1,21 @@
+services:
+  jobboard:
+    build: .
+    container_name: jobboard
+    ports:
+      - "3000:3000"
+    volumes:
+      # Persist job data and notepad on the host — survives container rebuilds
+      - ./data:/app/data
+      # Persist cached PDFs and screenshots on the host
+      - ./cache:/app/cache
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      # Chromium path is already baked into the image; override here if needed
+      - PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+    restart: unless-stopped
+    # Required for Chromium's sandbox when not using --no-sandbox
+    # (we do use --no-sandbox, but this makes some Linux kernels happier)
+    security_opt:
+      - seccomp:unconfined

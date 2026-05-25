@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JobBoard — My Job Application Tracker</title>
+  <meta name="description" content="Personal kanban board for tracking job applications, interviews, and offers." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ── Header ────────────────────────────────────────────────────────── -->
+  <header class="app-header">
+    <div class="header-inner">
+      <div class="header-brand">
+        <div class="brand-icon">
+          <svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="2" y="8" width="24" height="18" rx="3" fill="url(#grad1)"/>
+            <rect x="9" y="4" width="10" height="6" rx="2" fill="url(#grad2)" opacity="0.9"/>
+            <rect x="6" y="14" width="6" height="2" rx="1" fill="white" opacity="0.6"/>
+            <rect x="6" y="18" width="10" height="2" rx="1" fill="white" opacity="0.4"/>
+            <rect x="6" y="22" width="8" height="2" rx="1" fill="white" opacity="0.3"/>
+            <defs>
+              <linearGradient id="grad1" x1="2" y1="8" x2="26" y2="26" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#6366f1"/>
+                <stop offset="1" stop-color="#8b5cf6"/>
+              </linearGradient>
+              <linearGradient id="grad2" x1="9" y1="4" x2="19" y2="10" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#a78bfa"/>
+                <stop offset="1" stop-color="#6366f1"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h1>JobBoard</h1>
+          <span class="brand-sub">Application Tracker</span>
+        </div>
+      </div>
+
+      <div class="header-center">
+        <div class="stats-strip" id="statsStrip">
+          <!-- populated by JS -->
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <div class="backup-indicator" id="backupIndicator" title="Backup status">
+          <span class="backup-dot"></span>
+          <span class="backup-label">Backed up</span>
+        </div>
+        <button class="btn-notepad" id="notepadBtn" onclick="toggleNotepad()" title="Quick Notes" aria-label="Open quick notes">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+            <polyline points="10 9 9 9 8 9"/>
+          </svg>
+          Notes
+        </button>
+        <button class="btn-add" id="addJobBtn" onclick="openAddModal()">
+          <span class="btn-add-icon">+</span>
+          Add Job
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── Filter Toolbar ───────────────────────────────────────────────── -->
+  <div class="filter-bar" id="filterBar">
+    <div class="filter-bar-inner">
+      <span class="filter-label">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+        Filter by date
+      </span>
+
+      <div class="filter-chips" role="group" aria-label="Date filter presets">
+        <button class="filter-chip active" data-filter="all"      onclick="setFilter('all')">All time</button>
+        <button class="filter-chip"        data-filter="today"    onclick="setFilter('today')">Today</button>
+        <button class="filter-chip"        data-filter="yesterday" onclick="setFilter('yesterday')">Yesterday</button>
+        <button class="filter-chip"        data-filter="7d"       onclick="setFilter('7d')">Last 7 days</button>
+        <button class="filter-chip"        data-filter="14d"      onclick="setFilter('14d')">Last 14 days</button>
+        <button class="filter-chip"        data-filter="30d"      onclick="setFilter('30d')">Last 30 days</button>
+        <button class="filter-chip"        data-filter="custom"   onclick="setFilter('custom')">Custom range</button>
+      </div>
+
+      <div class="filter-custom hidden" id="filterCustom">
+        <input type="date" id="filterFrom" onchange="applyCustomFilter()" aria-label="From date" />
+        <span class="filter-range-sep">→</span>
+        <input type="date" id="filterTo"   onchange="applyCustomFilter()" aria-label="To date" />
+      </div>
+
+      <div class="filter-result" id="filterResult"></div>
+    </div>
+  </div>
+
+  <!-- ── Kanban Board ──────────────────────────────────────────────────── -->
+  <main class="kanban-main">
+    <div class="kanban-board" id="kanbanBoard">
+      <!-- Columns injected by app.js -->
+    </div>
+  </main>
+
+  <!-- ── Add Job Modal ─────────────────────────────────────────────────── -->
+  <div class="modal-overlay hidden" id="addModal" onclick="handleOverlayClick(event,'addModal')">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="addModalTitle">
+      <div class="modal-header">
+        <h2 id="addModalTitle" class="modal-title">Add New Job</h2>
+        <button class="modal-close-btn" onclick="closeAddModal()" aria-label="Close">&#x2715;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="addCompany">Company Name <span class="required">*</span></label>
+          <input type="text" id="addCompany" placeholder="e.g. Google" autocomplete="organization" />
+        </div>
+        <div class="form-group">
+          <label for="addTitle">Job Title <span class="required">*</span></label>
+          <input type="text" id="addTitle" placeholder="e.g. Senior Software Engineer" />
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="addDate">Date Applied</label>
+            <input type="date" id="addDate" />
+          </div>
+          <div class="form-group">
+            <label for="addStatus">Initial Status</label>
+            <select id="addStatus">
+              <option value="applied">📤 Applied</option>
+              <option value="screening">📞 Screening</option>
+              <option value="interview">🧑‍💻 Interview</option>
+              <option value="offer">🎉 Offer</option>
+              <option value="rejected">❌ Rejected</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="addUrl">Job Listing URL</label>
+          <input type="url" id="addUrl" placeholder="https://..." />
+          <p class="field-hint">We'll save a print-to-PDF copy of this page automatically.</p>
+        </div>
+        <div class="form-group">
+          <label>Screenshot <span class="field-hint" style="text-transform:none;letter-spacing:0">(optional — paste, drag &amp; drop, or click)</span></label>
+          <div class="screenshot-zone" id="addScreenshotZone"
+               ondragover="onAddScreenshotDragOver(event)"
+               ondragleave="onAddScreenshotDragLeave(event)"
+               ondrop="onAddScreenshotDrop(event)"
+               onclick="document.getElementById('addScreenshotFileInput').click()" style="min-height:90px">
+            <div class="screenshot-placeholder" id="addScreenshotPlaceholder">
+              <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              <p>Paste <kbd>Ctrl+V</kbd>, drag &amp; drop, or click to attach</p>
+            </div>
+            <img id="addScreenshotPreview" class="screenshot-img hidden" src="" alt="Screenshot preview" />
+            <button class="screenshot-remove hidden" id="addScreenshotRemoveBtn" onclick="clearAddScreenshot(event)" title="Remove">&#x2715;</button>
+          </div>
+          <input type="file" id="addScreenshotFileInput" accept="image/*" class="hidden" onchange="onAddScreenshotFileChange(event)" />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeAddModal()">Cancel</button>
+        <button class="btn-primary" id="saveAddBtn" onclick="saveNewJob()">Save Job</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Edit / Detail Modal ───────────────────────────────────────────── -->
+  <div class="modal-overlay hidden" id="editModal" onclick="handleOverlayClick(event,'editModal')">
+    <div class="modal modal-lg" role="dialog" aria-modal="true" aria-labelledby="editModalTitle">
+
+      <div class="modal-header edit-header">
+        <div class="edit-title-block">
+          <input type="text" id="editTitle" class="edit-title-input" placeholder="Job Title" aria-label="Job title" />
+          <input type="text" id="editCompany" class="edit-company-input" placeholder="Company Name" aria-label="Company name" />
+        </div>
+        <button class="modal-close-btn" onclick="closeEditModal()" aria-label="Close">&#x2715;</button>
+      </div>
+
+      <div class="modal-body modal-body-split">
+
+        <!-- Left panel: job details + screenshot -->
+        <div class="edit-panel edit-panel-left">
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="editStatus">Status</label>
+              <select id="editStatus">
+                <option value="applied">📤 Applied</option>
+                <option value="screening">📞 Screening</option>
+                <option value="interview">🧑‍💻 Interview</option>
+                <option value="offer">🎉 Offer</option>
+                <option value="rejected">❌ Rejected</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="editDate">Date Applied</label>
+              <input type="date" id="editDate" />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="editUrl">Job Listing URL</label>
+            <div class="url-row">
+              <input type="url" id="editUrl" placeholder="https://..." />
+              <button class="btn-icon-action" id="cachePageBtn" onclick="triggerCache()" title="Save page as PDF">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+              </button>
+              <a id="viewCacheLink" class="btn-icon-action" href="#" target="_blank" rel="noopener" title="Open saved PDF" style="display:none">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              </a>
+            </div>
+            <div class="cache-status-row" id="cacheStatusRow"></div>
+          </div>
+
+          <!-- Screenshot zone -->
+          <div class="form-group">
+            <label>Screenshot</label>
+            <div class="screenshot-zone" id="screenshotZone"
+                 ondragover="onScreenshotDragOver(event)"
+                 ondragleave="onScreenshotDragLeave(event)"
+                 ondrop="onScreenshotDrop(event)"
+                 onclick="document.getElementById('screenshotFileInput').click()">
+              <div class="screenshot-placeholder" id="screenshotPlaceholder">
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                <p>Paste <kbd>Ctrl+V</kbd>, drag &amp; drop, or click to upload</p>
+              </div>
+              <img id="screenshotPreview" class="screenshot-img hidden" src="" alt="Job screenshot"
+                   onclick="openLightbox(event)" />
+              <button class="screenshot-remove hidden" id="screenshotRemoveBtn" onclick="removeScreenshot(event)" title="Remove screenshot">&#x2715;</button>
+            </div>
+            <input type="file" id="screenshotFileInput" accept="image/*" class="hidden" onchange="onScreenshotFileChange(event)" />
+          </div>
+
+        </div>
+
+        <!-- Right panel: tabbed notes + emails -->
+        <div class="edit-panel edit-panel-right">
+
+          <!-- Tab bar -->
+          <div class="panel-tabs">
+            <button class="panel-tab active" id="tabBtnNotes"  onclick="switchRightTab('notes')">📝 Notes</button>
+            <button class="panel-tab"        id="tabBtnEmails" onclick="switchRightTab('emails')">📧 Emails <span class="tab-badge" id="emailTabBadge"></span></button>
+          </div>
+
+          <!-- ── Notes tab ── -->
+          <div class="tab-pane" id="paneNotes">
+            <div class="notes-input-block">
+              <label for="newNoteText">Add Note / Update</label>
+              <textarea id="newNoteText" placeholder="e.g. Submitted cover letter, got automated reply..." rows="4"></textarea>
+              <button class="btn-primary btn-sm" onclick="submitNote()">Add Note</button>
+            </div>
+            <div class="notes-log-header">
+              <span class="notes-log-title">Update Log</span>
+              <span class="notes-count" id="notesCount">0 entries</span>
+            </div>
+            <div class="notes-log" id="notesLog">
+              <div class="notes-empty">No notes yet. Add your first update above.</div>
+            </div>
+          </div>
+
+          <!-- ── Emails tab ── -->
+          <div class="tab-pane hidden" id="paneEmails">
+
+            <!-- Thunderbird drag zone -->
+            <div class="eml-drop-zone" id="emlDropZone"
+                 ondragover="onEmlDragOver(event)"
+                 ondragleave="onEmlDragLeave(event)"
+                 ondrop="onEmlDrop(event)">
+              <div class="eml-drop-icon">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+              </div>
+              <div class="eml-drop-text">
+                <strong>Drag email from Thunderbird</strong>
+                <span>Drop a message here to attach it automatically</span>
+              </div>
+            </div>
+
+            <div class="email-or-divider"><span>or enter manually</span></div>
+
+            <div class="email-add-block">
+              <label>Add Email</label>
+              <div class="form-row">
+                <div class="form-group" style="flex:2">
+                  <input type="text"  id="emailFrom"    placeholder="From (name or address)" />
+                </div>
+                <div class="form-group" style="flex:1">
+                  <input type="date"  id="emailDate" />
+                </div>
+              </div>
+              <div class="form-group">
+                <input type="text" id="emailSubject" placeholder="Subject" />
+              </div>
+              <div class="form-group">
+                <textarea id="emailBody" placeholder="Paste email body here..." rows="5"></textarea>
+              </div>
+              <button class="btn-primary btn-sm" onclick="submitEmail()">Attach Email</button>
+            </div>
+            <div class="emails-log-header">
+              <span class="notes-log-title">Attached Emails</span>
+              <span class="notes-count" id="emailsCount">0 emails</span>
+            </div>
+            <div class="emails-log" id="emailsLog">
+              <div class="notes-empty">No emails attached yet.</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="modal-footer edit-footer">
+        <button class="btn-danger" onclick="deleteCurrentJob()">Delete Job</button>
+        <div class="footer-spacer"></div>
+        <button class="btn-secondary" onclick="closeEditModal()">Cancel</button>
+        <button class="btn-primary" onclick="saveEditJob()">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Screenshot Lightbox ───────────────────────────────────────────── -->
+  <div class="lightbox hidden" id="lightbox" onclick="closeLightbox()">
+    <button class="lightbox-close" onclick="closeLightbox()">&#x2715;</button>
+    <img id="lightboxImg" src="" alt="Screenshot full view" />
+  </div>
+
+  <!-- ── Toast Notifications ──────────────────────────────────────────── -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- ── Quick Notepad ────────────────────────────────────────────────── -->
+  <div class="notepad-panel" id="notepadPanel" style="display:none">
+    <div class="notepad-header" id="notepadHeader">
+      <div class="notepad-title">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="16" y1="13" x2="8" y2="13"/>
+          <line x1="16" y1="17" x2="8" y2="17"/>
+          <polyline points="10 9 9 9 8 9"/>
+        </svg>
+        Quick Notes
+      </div>
+      <div class="notepad-header-actions">
+        <span class="notepad-saved-indicator" id="notepadSavedIndicator">Saved</span>
+        <button class="notepad-close-btn" onclick="toggleNotepad()" aria-label="Close notepad" title="Close">&#x2715;</button>
+      </div>
+    </div>
+    <div class="notepad-body">
+      <textarea id="notepadTextarea" placeholder="Jot down anything you frequently need when applying to jobs...
+
+• Cover letter snippets
+• Salary expectations
+• References
+• Frequently used links
+• Skills to highlight"></textarea>
+    </div>
+    <div class="notepad-footer">
+      <span class="notepad-hint">Auto-saved · drag header to move</span>
+      <button class="notepad-clear-btn" onclick="clearNotepad()" title="Clear all notes">Clear</button>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

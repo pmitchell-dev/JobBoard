@@ -1,0 +1,29 @@
+# ── Dependencies ──────────────────────────────────────────────────────────────
+node_modules/
+
+# ── Runtime data (personal — never commit) ────────────────────────────────────
+data/jobs.backup.json
+data/notepad.backup.json
+data/backups/
+
+# ── Cache artefacts (PDFs + screenshots — can be very large) ──────────────────
+cache/*
+!cache/.gitkeep
+
+# ── Windows-only launch helpers ────────────────────────────────────────────────
+*.bat
+
+# ── Environment / secrets ─────────────────────────────────────────────────────
+.env
+*.env
+.env.*
+
+# ── OS noise ──────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Editor noise ──────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
