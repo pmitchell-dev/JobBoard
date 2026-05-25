@@ -42,6 +42,18 @@ function createBackup() {
   try {
     if (!fs.existsSync(JOBS_FILE)) return;
 
+    // Safety guard: never overwrite a populated backup with an empty array.
+    // This prevents a blank jobs.json (e.g. from a fresh container start or
+    // accidental reset) from destroying the last known-good backup.
+    const currentJobs = JSON.parse(fs.readFileSync(JOBS_FILE, 'utf8'));
+    if (currentJobs.length === 0 && fs.existsSync(BACKUP_FILE)) {
+      const backupJobs = JSON.parse(fs.readFileSync(BACKUP_FILE, 'utf8'));
+      if (backupJobs.length > 0) {
+        console.warn('[Backup] ⚠️  Skipped — refusing to overwrite a populated backup with an empty jobs list.');
+        return;
+      }
+    }
+
     // Rolling backup — always kept, overwritten each time
     fs.copyFileSync(JOBS_FILE, BACKUP_FILE);
 
