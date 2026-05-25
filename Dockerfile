@@ -51,14 +51,13 @@ COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 # ── Run as non-root for security ──────────────────────────────────────────────
-RUN groupadd --system --gid 1000 jobboard && useradd --system --uid 1000 --gid jobboard jobboard \
-    && chown -R jobboard:jobboard /app
-USER jobboard
+# node:20-slim ships with a built-in 'node' user at UID/GID 1000 — use it directly.
+RUN chown -R node:node /app
+USER node
 
 EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD node -e "require('http').get('http://localhost:3000/api/jobs', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
 
-# entrypoint.sh runs as root, fixes ownership, then drops to jobboard user
 ENTRYPOINT ["/entrypoint.sh"]
