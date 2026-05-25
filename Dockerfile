@@ -22,6 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       libxrandr2 \
       libxshmfence1 \
       xdg-utils \
+      su-exec \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Tell Puppeteer to skip bundled Chromium download and use the system one ────
@@ -43,8 +44,12 @@ COPY server.js  ./
 # ── Seed data files (overwritten at runtime via bind-mount in docker-compose) ──
 COPY data/      ./data/
 
-# ── Ensure cache directory exists inside image ────────────────────────────────
+# ── Ensure writable runtime directories exist ─────────────────────────────────
 RUN mkdir -p cache data/backups
+
+# ── Copy entrypoint (fixes bind-mount ownership at startup) ───────────────────
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 # ── Run as non-root for security ──────────────────────────────────────────────
 RUN groupadd --system jobboard && useradd --system --gid jobboard jobboard \
@@ -56,4 +61,5 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD node -e "require('http').get('http://localhost:3000/api/jobs', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
 
-CMD ["node", "server.js"]
+# entrypoint.sh runs as root, fixes ownership, then drops to jobboard user
+ENTRYPOINT ["/entrypoint.sh"]
