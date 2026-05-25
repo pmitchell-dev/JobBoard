@@ -22,7 +22,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       libxrandr2 \
       libxshmfence1 \
       xdg-utils \
-      gosu \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Tell Puppeteer to skip bundled Chromium download and use the system one ────
@@ -52,7 +51,7 @@ COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 # ── Run as non-root for security ──────────────────────────────────────────────
-RUN groupadd --system jobboard && useradd --system --gid jobboard jobboard \
+RUN groupadd --system --gid 1000 jobboard && useradd --system --uid 1000 --gid jobboard jobboard \
     && chown -R jobboard:jobboard /app
 USER jobboard
 

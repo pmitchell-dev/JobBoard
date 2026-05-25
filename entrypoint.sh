@@ -1,5 +1,5 @@
 #!/bin/sh
-# Fix ownership of bind-mounted volumes (host may own them as root)
+# Container already runs as jobboard (UID 1000) via Dockerfile USER directive.
+# chown is best-effort — host dirs are pre-owned 1000:1000 by pi_rebuild.sh
 chown -R jobboard:jobboard /app/data /app/cache 2>/dev/null || true
-# Drop to non-root user and start the server
-exec gosu jobboard node server.js
+exec node server.js
