@@ -54,11 +54,11 @@
         </div>
         <button class="btn-icon-text" id="exportBtn" onclick="exportData()" title="Export all data to a .jobboard file">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Export
+          <span class="btn-text-label">Export</span>
         </button>
         <label class="btn-icon-text btn-import-label" title="Import a .jobboard file">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-          Import
+          <span class="btn-text-label">Import</span>
           <input type="file" id="importFileInput" accept=".jobboard,.zip" class="hidden" onchange="promptImport(event)" />
         </label>
         <button class="btn-notepad" id="notepadBtn" onclick="toggleNotepad()" title="Quick Notes" aria-label="Open quick notes">
@@ -69,11 +69,11 @@
             <line x1="16" y1="17" x2="8" y2="17"/>
             <polyline points="10 9 9 9 8 9"/>
           </svg>
-          Notes
+          <span class="notepad-btn-label">Notes</span>
         </button>
         <button class="btn-add" id="addJobBtn" onclick="openAddModal()">
           <span class="btn-add-icon">+</span>
-          Add Job
+          <span class="btn-add-label">Add Job</span>
         </button>
       </div>
     </div>

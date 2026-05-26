@@ -110,7 +110,7 @@ function renderStats() {
     return `<div class="stat-chip">
       <div class="dot" style="background:${col.color}"></div>
       <span class="count">${count}</span>
-      <span>${col.label}</span>
+      <span class="label">${col.label}</span>
     </div>`;
   }).join('');
 }
