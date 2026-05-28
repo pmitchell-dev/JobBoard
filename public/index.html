@@ -223,23 +223,19 @@
             <div class="cache-status-row" id="cacheStatusRow"></div>
           </div>
 
-          <!-- Screenshot zone -->
+          <!-- Screenshots (multi) -->
           <div class="form-group">
-            <label>Screenshot</label>
-            <div class="screenshot-zone" id="screenshotZone"
+            <label>Screenshots <span class="screenshot-count-label" id="screenshotCountLabel"></span></label>
+            <div class="screenshot-add-zone" id="screenshotZone"
                  ondragover="onScreenshotDragOver(event)"
                  ondragleave="onScreenshotDragLeave(event)"
                  ondrop="onScreenshotDrop(event)"
                  onclick="document.getElementById('screenshotFileInput').click()">
-              <div class="screenshot-placeholder" id="screenshotPlaceholder">
-                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                <p>Paste <kbd>Ctrl+V</kbd>, drag &amp; drop, or click to upload</p>
-              </div>
-              <img id="screenshotPreview" class="screenshot-img hidden" src="" alt="Job screenshot"
-                   onclick="openLightbox(event)" />
-              <button class="screenshot-remove hidden" id="screenshotRemoveBtn" onclick="removeScreenshot(event)" title="Remove screenshot">&#x2715;</button>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              <span>Paste <kbd>Ctrl+V</kbd>, drag &amp; drop, or click to add</span>
             </div>
-            <input type="file" id="screenshotFileInput" accept="image/*" class="hidden" onchange="onScreenshotFileChange(event)" />
+            <div class="screenshot-gallery" id="screenshotGallery"></div>
+            <input type="file" id="screenshotFileInput" accept="image/*" multiple class="hidden" onchange="onScreenshotFileChange(event)" />
           </div>
 
         </div>

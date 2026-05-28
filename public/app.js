@@ -81,11 +81,11 @@ function buildCard(job, color) {
   el.addEventListener('dragend',   onCardDragEnd);
   el.addEventListener('click',     () => openEditModal(job.id));
 
-  const hasCached     = job.cached;
-  const hasScreenshot = job.screenshot;
-  const hasNotes      = job.notes && job.notes.length > 0;
-  const emailCount    = (job.emails || []).length;
-  const hasDocs       = !!(job.resume || job.coverLetter);
+  const hasCached      = job.cached;
+  const screenshotCount = (job.screenshots || []).length;
+  const hasNotes        = job.notes && job.notes.length > 0;
+  const emailCount      = (job.emails || []).length;
+  const hasDocs         = !!(job.resume || job.coverLetter);
 
   el.innerHTML = `
     <div class="card-company">${esc(job.company)}</div>
@@ -94,13 +94,13 @@ function buildCard(job, color) {
       <span class="card-date">📅 ${fmtDate(job.dateApplied)}</span>
       <div class="card-badges">
         <span class="card-badge ${hasCached?'active':''}" title="${hasCached?'Page cached':'No cached page'}">💾</span>
-        <span class="card-badge ${hasScreenshot?'active':''}" title="${hasScreenshot?'Has screenshot':'No screenshot'}">📷</span>
+        <span class="card-badge ${screenshotCount?'active':''}" title="${screenshotCount?screenshotCount+' screenshot(s)':'No screenshots'}">📷</span>
         <span class="card-badge ${hasNotes?'active':''}" title="${hasNotes?job.notes.length+' note(s)':'No notes'}">📝</span>
         <span class="card-badge ${emailCount?'active':''}" title="${emailCount?emailCount+' email(s)':'No emails'}">📧</span>
         <span class="card-badge ${hasDocs?'active':''}" title="${hasDocs?'Has resume/cover letter':'No documents'}">📄</span>
       </div>
     </div>
-    ${hasScreenshot ? `<img class="card-thumb visible" src="/cache/${job.id}-screenshot.png?t=${Date.now()}" alt="screenshot">` : ''}
+    ${screenshotCount ? `<img class="card-thumb visible" src="/cache/${(job.screenshots||[])[0]?.filename}?t=${Date.now()}" alt="screenshot">` : ''}
   `;
   return el;
 }
@@ -324,21 +324,11 @@ function openEditModal(jobId) {
   }
   updateCacheStatus(job.cached ? 'cached' : 'none');
 
-  // Screenshot
-  const preview   = document.getElementById('screenshotPreview');
-  const holder    = document.getElementById('screenshotPlaceholder');
-  const removeBtn = document.getElementById('screenshotRemoveBtn');
-  if (job.screenshot) {
-    preview.src = `/cache/${job.id}-screenshot.png?t=${Date.now()}`;
-    preview.classList.remove('hidden');
-    holder.classList.add('hidden');
-    removeBtn.classList.remove('hidden');
-  } else {
-    preview.src = '';
-    preview.classList.add('hidden');
-    holder.classList.add('hidden');
-    removeBtn.classList.add('hidden');
+  // Screenshots — migrate legacy boolean if needed
+  if (!Array.isArray(job.screenshots)) {
+    job.screenshots = [];
   }
+  renderScreenshots(job.screenshots);
 
   // Reset to notes tab
   switchRightTab('notes');
@@ -369,6 +359,7 @@ function closeEditModal() {
 
 async function saveEditJob() {
   if (!activeJobId) return;
+  const jobId = activeJobId; // capture before any await
   const data = {
     title:       document.getElementById('editTitle').value.trim(),
     company:     document.getElementById('editCompany').value.trim(),
@@ -380,9 +371,14 @@ async function saveEditJob() {
   };
   if (!data.title || !data.company) { toast('Title and Company are required.', 'error'); return; }
   try {
-    const updated = await api('PUT', `/api/jobs/${activeJobId}`, data);
-    const idx = jobs.findIndex(j => j.id === activeJobId);
-    if (idx !== -1) Object.assign(jobs[idx], updated);
+    const updated = await api('PUT', `/api/jobs/${jobId}`, data);
+    const idx = jobs.findIndex(j => j.id === jobId);
+    if (idx !== -1) {
+      // Preserve in-memory notes/emails/screenshots — server may return stale versions
+      // if a concurrent add-note/email was in-flight when PUT was sent
+      const { notes, emails, screenshots, ...rest } = updated;
+      Object.assign(jobs[idx], rest);
+    }
     renderBoard(); renderStats(); applyFilter();
     closeEditModal();
     toast('Changes saved.', 'success');
@@ -421,25 +417,26 @@ function renderNotes(notes) {
 }
 
 async function submitNote() {
-  if (!activeJobId) return;
+  const jobId = activeJobId; // capture before await
+  if (!jobId) return;
   const text = document.getElementById('newNoteText').value.trim();
   if (!text) { toast('Note text cannot be empty.', 'error'); return; }
   try {
-    const note = await api('POST', `/api/jobs/${activeJobId}/notes`, { text });
-    const job  = jobs.find(j => j.id === activeJobId);
+    const note = await api('POST', `/api/jobs/${jobId}/notes`, { text });
+    const job  = jobs.find(j => j.id === jobId);
     if (job) { job.notes = job.notes || []; job.notes.push(note); renderNotes(job.notes); }
     document.getElementById('newNoteText').value = '';
     // Update card badge
-    document.getElementById(`card-${activeJobId}`)
-      ?.querySelectorAll('.card-badge')[2]?.classList.add('active');
+    document.getElementById(`card-${jobId}`)?.querySelectorAll('.card-badge')[2]?.classList.add('active');
   } catch (err) { toast('Error: ' + err.message, 'error'); }
 }
 
 async function deleteNote(noteId) {
-  if (!activeJobId) return;
+  const jobId = activeJobId;
+  if (!jobId) return;
   try {
-    await api('DELETE', `/api/jobs/${activeJobId}/notes/${noteId}`);
-    const job = jobs.find(j => j.id === activeJobId);
+    await api('DELETE', `/api/jobs/${jobId}/notes/${noteId}`);
+    const job = jobs.find(j => j.id === jobId);
     if (job) { job.notes = job.notes.filter(n => n.id !== noteId); renderNotes(job.notes); }
   } catch (err) { toast('Error: ' + err.message, 'error'); }
 }
@@ -480,20 +477,26 @@ function onDocEditorInput(type) {
 }
 
 async function saveDocToJob(type) {
-  if (!activeJobId) return;
+  const jobId = activeJobId; // capture before await
+  if (!jobId) return;
   const editorId = type === 'resume' ? 'resumeEditor' : 'coverEditor';
   const html = document.getElementById(editorId).innerHTML || '';
   const field = type === 'resume' ? 'resume' : 'coverLetter';
   try {
-    const updated = await api('PUT', `/api/jobs/${activeJobId}`, { [field]: html });
-    const idx = jobs.findIndex(j => j.id === activeJobId);
-    if (idx !== -1) Object.assign(jobs[idx], updated);
+    const updated = await api('PUT', `/api/jobs/${jobId}`, { [field]: html });
+    const idx = jobs.findIndex(j => j.id === jobId);
+    if (idx !== -1) {
+      // Preserve in-memory notes/emails/screenshots
+      const { notes, emails, screenshots, ...rest } = updated;
+      Object.assign(jobs[idx], rest);
+    }
     flashDocSaved(type);
-    updateDocsBadge(jobs[idx]);
-    // Refresh card badge without full re-render
-    const card = document.getElementById(`card-${activeJobId}`);
-    if (card) {
-      const hasDocs = !!(jobs[idx]?.resume || jobs[idx]?.coverLetter);
+    const job = jobs.find(j => j.id === jobId);
+    if (job) updateDocsBadge(job);
+    // Refresh doc card badge without full re-render
+    const card = document.getElementById(`card-${jobId}`);
+    if (card && job) {
+      const hasDocs = !!(job.resume || job.coverLetter);
       const badge = [...card.querySelectorAll('.card-badge')].at(-1);
       if (badge) badge.classList.toggle('active', hasDocs);
     }
@@ -688,7 +691,8 @@ function toggleEmailExpand(emailId) {
 }
 
 async function submitEmail() {
-  if (!activeJobId) return;
+  const jobId = activeJobId;
+  if (!jobId) return;
   const from    = document.getElementById('emailFrom').value.trim();
   const subject = document.getElementById('emailSubject').value.trim();
   const date    = document.getElementById('emailDate').value;
@@ -696,15 +700,14 @@ async function submitEmail() {
 
   if (!from && !subject) { toast('Enter at least a From or Subject.', 'error'); return; }
   try {
-    const email = await api('POST', `/api/jobs/${activeJobId}/emails`, { from, subject, date, body });
-    const job   = jobs.find(j => j.id === activeJobId);
+    const email = await api('POST', `/api/jobs/${jobId}/emails`, { from, subject, date, body });
+    const job   = jobs.find(j => j.id === jobId);
     if (job) { job.emails = job.emails || []; job.emails.push(email); renderEmails(job.emails); }
     // Clear form
     document.getElementById('emailFrom').value    = '';
     document.getElementById('emailSubject').value = '';
     document.getElementById('emailDate').value    = '';
     document.getElementById('emailBody').value    = '';
-    // Update card badge
     renderBoard(); applyFilter();
     toast('Email attached ✓', 'success');
   } catch (err) { toast('Error: ' + err.message, 'error'); }
@@ -712,10 +715,11 @@ async function submitEmail() {
 
 async function deleteEmail(e, emailId) {
   e.stopPropagation();
-  if (!activeJobId) return;
+  const jobId = activeJobId;
+  if (!jobId) return;
   try {
-    await api('DELETE', `/api/jobs/${activeJobId}/emails/${emailId}`);
-    const job = jobs.find(j => j.id === activeJobId);
+    await api('DELETE', `/api/jobs/${jobId}/emails/${emailId}`);
+    const job = jobs.find(j => j.id === jobId);
     if (job) { job.emails = job.emails.filter(em => em.id !== emailId); renderEmails(job.emails); }
     renderBoard(); applyFilter();
   } catch (err) { toast('Error: ' + err.message, 'error'); }
@@ -1045,73 +1049,118 @@ function onScreenshotDragOver(e) {
 }
 function onScreenshotDragLeave(e) {
   e.stopPropagation();
-  document.getElementById('screenshotZone').classList.remove('drag-active');
+  if (!e.currentTarget.contains(e.relatedTarget))
+    document.getElementById('screenshotZone').classList.remove('drag-active');
 }
 function onScreenshotDrop(e) {
   e.preventDefault(); e.stopPropagation();
   document.getElementById('screenshotZone').classList.remove('drag-active');
-  const file = e.dataTransfer.files[0];
-  if (file && file.type.startsWith('image/')) handleScreenshotFile(file);
+  const files = [...e.dataTransfer.files].filter(f => f.type.startsWith('image/'));
+  files.forEach(handleScreenshotFile);
 }
 function onScreenshotFileChange(e) {
-  const file = e.target.files[0];
-  if (file) handleScreenshotFile(file);
+  const files = [...e.target.files];
+  files.forEach(handleScreenshotFile);
   e.target.value = '';
 }
 
-function handleScreenshotFile(file) {
-  if (!activeJobId) return;
-  const reader = new FileReader();
-  reader.onload = async ev => {
-    const imageData = ev.target.result;
-    // Show preview immediately
-    const preview = document.getElementById('screenshotPreview');
-    preview.src = imageData;
-    preview.classList.remove('hidden');
-    document.getElementById('screenshotPlaceholder').classList.add('hidden');
-    document.getElementById('screenshotRemoveBtn').classList.remove('hidden');
-    try {
-      await api('POST', `/api/screenshot/${activeJobId}`, { imageData });
-      const job = jobs.find(j => j.id === activeJobId);
-      if (job) job.screenshot = true;
-      // Refresh card thumbnail
-      const thumb = document.querySelector(`#card-${activeJobId} .card-thumb`);
-      if (thumb) { thumb.src = imageData; thumb.classList.add('visible'); }
-      else {
+// ── Screenshot gallery renderer ────────────────────────────────────────────
+function renderScreenshots(screenshots) {
+  const gallery = document.getElementById('screenshotGallery');
+  const label   = document.getElementById('screenshotCountLabel');
+  if (!gallery) return;
+
+  const count = screenshots.length;
+  label.textContent = count ? `(${count})` : '';
+
+  gallery.innerHTML = screenshots.map(s => `
+    <div class="screenshot-thumb-wrap" id="sthumb-${s.id}">
+      <img src="/cache/${s.filename}?t=${Date.now()}" alt="screenshot"
+           onclick="openLightbox('/cache/${s.filename}')" />
+      <button class="screenshot-thumb-remove" onclick="removeScreenshot(event,'${s.id}')" title="Remove">✕</button>
+    </div>
+  `).join('');
+
+  // Update card badge
+  if (activeJobId) {
+    const cardBadge = document.querySelector(`#card-${activeJobId} .card-badge:nth-child(2)`);
+    if (cardBadge) {
+      cardBadge.classList.toggle('active', count > 0);
+      cardBadge.title = count ? `${count} screenshot(s)` : 'No screenshots';
+    }
+    // Update card thumb (first screenshot)
+    const cardThumb = document.querySelector(`#card-${activeJobId} .card-thumb`);
+    if (count > 0) {
+      if (cardThumb) {
+        cardThumb.src = `/cache/${screenshots[0].filename}?t=${Date.now()}`;
+        cardThumb.classList.add('visible');
+      } else {
         const card = document.getElementById(`card-${activeJobId}`);
         if (card) {
           const img = document.createElement('img');
           img.className = 'card-thumb visible';
-          img.src = imageData;
+          img.src = `/cache/${screenshots[0].filename}?t=${Date.now()}`;
           img.alt = 'screenshot';
           card.appendChild(img);
         }
       }
+    } else if (cardThumb) {
+      cardThumb.remove();
+    }
+  }
+}
+
+function handleScreenshotFile(file) {
+  if (!activeJobId) return;
+  const jobId = activeJobId; // capture before async gap
+
+  // Show an uploading placeholder immediately
+  const gallery = document.getElementById('screenshotGallery');
+  const tempId  = 'uploading-' + Date.now();
+  const placeholder = document.createElement('div');
+  placeholder.className = 'screenshot-thumb-uploading';
+  placeholder.id = tempId;
+  placeholder.textContent = '⏳';
+  gallery.appendChild(placeholder);
+
+  const reader = new FileReader();
+  reader.onload = async ev => {
+    const imageData = ev.target.result;
+    try {
+      const result = await api('POST', `/api/screenshot/${jobId}`, { imageData });
+      const job = jobs.find(j => j.id === jobId);
+      if (job) {
+        if (!Array.isArray(job.screenshots)) job.screenshots = [];
+        job.screenshots.push(result.screenshot);
+        renderScreenshots(job.screenshots);
+      }
       toast('Screenshot saved ✓', 'success');
-    } catch (err) { toast('Screenshot upload failed: ' + err.message, 'error'); }
+    } catch (err) {
+      toast('Screenshot upload failed: ' + err.message, 'error');
+    } finally {
+      document.getElementById(tempId)?.remove();
+    }
   };
   reader.readAsDataURL(file);
 }
 
-async function removeScreenshot(e) {
+async function removeScreenshot(e, screenshotId) {
   e.stopPropagation();
-  if (!activeJobId) return;
+  const jobId = activeJobId;
+  if (!jobId || !screenshotId) return;
   try {
-    await api('DELETE', `/api/screenshot/${activeJobId}`);
-    const job = jobs.find(j => j.id === activeJobId);
-    if (job) job.screenshot = false;
-    document.getElementById('screenshotPreview').classList.add('hidden');
-    document.getElementById('screenshotPlaceholder').classList.remove('hidden');
-    document.getElementById('screenshotRemoveBtn').classList.add('hidden');
-    document.querySelector(`#card-${activeJobId} .card-thumb`)?.remove();
+    await api('DELETE', `/api/screenshot/${jobId}/${screenshotId}`);
+    const job = jobs.find(j => j.id === jobId);
+    if (job) {
+      job.screenshots = (job.screenshots || []).filter(s => s.id !== screenshotId);
+      renderScreenshots(job.screenshots);
+    }
     toast('Screenshot removed.', 'info');
   } catch (err) { toast('Error: ' + err.message, 'error'); }
 }
 
 // ── Lightbox ──────────────────────────────────────────────────────────────
-function openLightbox(e) {
-  e.stopPropagation();
-  const src = document.getElementById('screenshotPreview').src;
+function openLightbox(src) {
   document.getElementById('lightboxImg').src = src;
   show('lightbox');
 }

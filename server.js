@@ -119,8 +119,8 @@ app.post('/api/jobs', (req, res) => {
     status:      req.body.status   || 'applied',
     notes:       [],
     emails:      [],
+    screenshots: [],
     cached:      false,
-    screenshot:  false,
     createdAt:   new Date().toISOString(),
     updatedAt:   new Date().toISOString(),
   };
@@ -151,11 +151,18 @@ app.delete('/api/jobs/:id', (req, res) => {
   jobs = jobs.filter(j => j.id !== req.params.id);
   writeJobs(jobs);
 
-  // Clean up cache artefacts
-  [
-    path.join(CACHE_DIR, `${req.params.id}.pdf`),
-    path.join(CACHE_DIR, `${req.params.id}-screenshot.png`),
-  ].forEach(f => { if (fs.existsSync(f)) fs.unlinkSync(f); });
+  // Clean up PDF cache
+  const pdfFile = path.join(CACHE_DIR, `${req.params.id}.pdf`);
+  if (fs.existsSync(pdfFile)) fs.unlinkSync(pdfFile);
+
+  // Clean up all screenshots (new array format)
+  (job.screenshots || []).forEach(s => {
+    const f = path.join(CACHE_DIR, s.filename);
+    if (fs.existsSync(f)) fs.unlinkSync(f);
+  });
+  // Legacy single screenshot
+  const legacyFile = path.join(CACHE_DIR, `${req.params.id}-screenshot.png`);
+  if (fs.existsSync(legacyFile)) fs.unlinkSync(legacyFile);
 
   res.json({ success: true });
 });
@@ -286,44 +293,54 @@ app.post('/api/cache', async (req, res) => {
   }
 });
 
-// POST /api/screenshot/:id  — save base64 image
+// POST /api/screenshot/:id  — add a screenshot (supports multiple)
 app.post('/api/screenshot/:id', (req, res) => {
   const jobId = req.params.id;
   const { imageData } = req.body;
   if (!imageData) return res.status(400).json({ error: 'imageData required' });
 
   try {
-    const base64 = imageData.replace(/^data:image\/\w+;base64,/, '');
-    const buffer = Buffer.from(base64, 'base64');
-    const file = path.join(CACHE_DIR, `${jobId}-screenshot.png`);
-    fs.writeFileSync(file, buffer);
+    const screenshotId = uuidv4();
+    const base64  = imageData.replace(/^data:image\/\w+;base64,/, '');
+    const buffer  = Buffer.from(base64, 'base64');
+    const filename = `${jobId}-screenshot-${screenshotId}.png`;
+    fs.writeFileSync(path.join(CACHE_DIR, filename), buffer);
 
     const jobs = readJobs();
-    const idx = jobs.findIndex(j => j.id === jobId);
-    if (idx !== -1) {
-      jobs[idx].screenshot = true;
-      jobs[idx].updatedAt = new Date().toISOString();
-      writeJobs(jobs);
-    }
+    const idx  = jobs.findIndex(j => j.id === jobId);
+    if (idx === -1) return res.status(404).json({ error: 'Job not found' });
 
-    res.json({ success: true, url: `/cache/${jobId}-screenshot.png` });
+    if (!Array.isArray(jobs[idx].screenshots)) jobs[idx].screenshots = [];
+    const screenshot = { id: screenshotId, filename, addedAt: new Date().toISOString() };
+    jobs[idx].screenshots.push(screenshot);
+    jobs[idx].updatedAt = new Date().toISOString();
+    writeJobs(jobs);
+
+    res.json({ success: true, screenshot, url: `/cache/${filename}` });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// DELETE /api/screenshot/:id  — remove screenshot
-app.delete('/api/screenshot/:id', (req, res) => {
-  const file = path.join(CACHE_DIR, `${req.params.id}-screenshot.png`);
-  if (fs.existsSync(file)) fs.unlinkSync(file);
+// DELETE /api/screenshot/:id/:screenshotId  — remove one screenshot
+app.delete('/api/screenshot/:id/:screenshotId', (req, res) => {
+  const { id: jobId, screenshotId } = req.params;
 
   const jobs = readJobs();
-  const idx = jobs.findIndex(j => j.id === req.params.id);
-  if (idx !== -1) {
-    jobs[idx].screenshot = false;
-    jobs[idx].updatedAt = new Date().toISOString();
-    writeJobs(jobs);
+  const idx  = jobs.findIndex(j => j.id === jobId);
+  if (idx === -1) return res.status(404).json({ error: 'Job not found' });
+
+  const job = jobs[idx];
+  if (Array.isArray(job.screenshots)) {
+    const shot = job.screenshots.find(s => s.id === screenshotId);
+    if (shot) {
+      const f = path.join(CACHE_DIR, shot.filename);
+      if (fs.existsSync(f)) fs.unlinkSync(f);
+    }
+    job.screenshots = job.screenshots.filter(s => s.id !== screenshotId);
   }
+  job.updatedAt = new Date().toISOString();
+  writeJobs(jobs);
   res.json({ success: true });
 });
 

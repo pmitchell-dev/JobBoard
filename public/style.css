@@ -314,34 +314,57 @@ textarea { resize: vertical; min-height: 80px; line-height: 1.5; }
 .cache-err { color: #ef4444; }
 .cache-pending { color: #f59e0b; }
 
-/* ── Screenshot Zone ──────────────────────────────────────────────────────── */
-.screenshot-zone {
-  border: 2px dashed var(--border); border-radius: 10px;
-  min-height: 120px; position: relative;
-  display: flex; align-items: center; justify-content: center;
-  cursor: pointer; transition: all 0.2s; overflow: hidden;
-}
-.screenshot-zone:hover { border-color: rgba(99,102,241,0.5); background: rgba(99,102,241,0.04); }
-.screenshot-zone.drag-active { border-color: var(--applied); background: rgba(99,102,241,0.08); }
-.screenshot-placeholder {
-  text-align: center; color: var(--text-muted); padding: 20px;
-  display: flex; flex-direction: column; align-items: center; gap: 10px; pointer-events: none;
-}
-.screenshot-placeholder p { font-size: 0.78rem; line-height: 1.5; }
 kbd {
   display: inline-flex; padding: 1px 6px; border-radius: 4px;
   background: rgba(255,255,255,0.08); border: 1px solid var(--border);
   font-family: var(--font); font-size: 0.72rem;
 }
-.screenshot-img { width: 100%; height: 100%; object-fit: contain; display: block; cursor: zoom-in; }
-.screenshot-remove {
-  position: absolute; top: 6px; right: 6px;
-  width: 24px; height: 24px; border-radius: 6px;
-  background: rgba(239,68,68,0.8); border: none; color: #fff;
-  cursor: pointer; font-size: 0.75rem; display: flex; align-items: center; justify-content: center;
-  transition: background 0.15s;
+
+/* ── Screenshot Add Zone (multi) ─────────────────────────────────────────── */
+.screenshot-add-zone {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; border-radius: 8px;
+  border: 2px dashed var(--border); cursor: pointer;
+  color: var(--text-muted); font-size: 0.78rem;
+  transition: all 0.2s; background: rgba(255,255,255,0.015);
 }
-.screenshot-remove:hover { background: #ef4444; }
+.screenshot-add-zone:hover { border-color: rgba(99,102,241,0.5); background: rgba(99,102,241,0.04); color: var(--text); }
+.screenshot-add-zone.drag-active { border-color: var(--applied); background: rgba(99,102,241,0.08); }
+.screenshot-count-label { font-size: 0.7rem; color: var(--text-muted); font-weight: 400; text-transform: none; letter-spacing: 0; }
+
+/* ── Screenshot Gallery ───────────────────────────────────────────────────── */
+.screenshot-gallery {
+  display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px;
+}
+.screenshot-thumb-wrap {
+  position: relative; width: 90px; height: 68px;
+  border-radius: 8px; overflow: hidden;
+  border: 1px solid var(--border); flex-shrink: 0;
+  background: rgba(0,0,0,0.2);
+  transition: border-color 0.15s;
+}
+.screenshot-thumb-wrap:hover { border-color: var(--border-hov); }
+.screenshot-thumb-wrap img {
+  width: 100%; height: 100%; object-fit: cover;
+  display: block; cursor: zoom-in;
+}
+.screenshot-thumb-remove {
+  position: absolute; top: 3px; right: 3px;
+  width: 20px; height: 20px; border-radius: 5px;
+  background: rgba(239,68,68,0.85); border: none; color: #fff;
+  cursor: pointer; font-size: 0.65rem;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity 0.15s;
+}
+.screenshot-thumb-wrap:hover .screenshot-thumb-remove { opacity: 1; }
+.screenshot-thumb-remove:hover { background: #ef4444; }
+.screenshot-thumb-uploading {
+  width: 90px; height: 68px; border-radius: 8px;
+  border: 1px dashed var(--border); flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.68rem; color: var(--text-muted);
+  background: rgba(255,255,255,0.02); animation: pulse-green 1.5s ease-in-out infinite;
+}
 
 /* ── Notes Log ────────────────────────────────────────────────────────────── */
 .notes-input-block {
