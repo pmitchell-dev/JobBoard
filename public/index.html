@@ -9,6 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
 </head>
 <body>
 
@@ -337,6 +338,7 @@
               <button class="toolbar-btn" onclick="execFmt('insertUnorderedList')" title="Bullet list">&#8226;—</button>
               <button class="toolbar-btn" onclick="execFmt('insertOrderedList')"   title="Numbered list">1.</button>
               <div class="toolbar-sep"></div>
+              <button class="toolbar-btn" onclick="triggerDocxUpload('resume')" title="Upload .docx">📤 Upload .docx</button>
               <button class="toolbar-btn toolbar-btn-clear" onclick="clearDocEditor('resume')" title="Clear content">✕ Clear</button>
             </div>
             <div class="rich-editor" id="resumeEditor"
@@ -367,6 +369,7 @@
               <button class="toolbar-btn" onclick="execFmt('insertUnorderedList')" title="Bullet list">&#8226;—</button>
               <button class="toolbar-btn" onclick="execFmt('insertOrderedList')"   title="Numbered list">1.</button>
               <div class="toolbar-sep"></div>
+              <button class="toolbar-btn" onclick="triggerDocxUpload('cover')" title="Upload .docx">📤 Upload .docx</button>
               <button class="toolbar-btn toolbar-btn-clear" onclick="clearDocEditor('cover')" title="Clear content">✕ Clear</button>
             </div>
             <div class="rich-editor" id="coverEditor"
@@ -382,6 +385,8 @@
               </button>
             </div>
           </div>
+
+          <input type="file" id="docxInput" accept=".docx" class="hidden" onchange="uploadDocx(event)" />
 
         </div>
 

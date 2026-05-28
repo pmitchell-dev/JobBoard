@@ -572,6 +572,43 @@ function clearDocEditor(type) {
   onDocEditorInput(type);
 }
 
+// ── .docx Upload ────────────────────────────────────────────────────────────
+function triggerDocxUpload(type) {
+  const input = document.getElementById('docxInput');
+  input.dataset.targetType = type;
+  input.click();
+}
+
+async function uploadDocx(event) {
+  const file = event.target.files[0];
+  const type = event.target.dataset.targetType;
+  if (!file) return;
+  event.target.value = ''; // Reset input
+  
+  if (!window.mammoth) {
+    toast('Mammoth.js library not loaded yet.', 'error');
+    return;
+  }
+  
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const result = await mammoth.convertToHtml({ arrayBuffer });
+    const html = result.value;
+    
+    // Clean Word junk
+    const clean = cleanWordHtml(html);
+    
+    const editorId = type === 'resume' ? 'resumeEditor' : 'coverEditor';
+    document.getElementById(editorId).innerHTML = clean;
+    
+    // Trigger auto-save
+    onDocEditorInput(type);
+    toast(`Imported ${file.name} ✓`, 'success');
+  } catch (error) {
+    toast(`Error reading .docx: ${error.message}`, 'error');
+  }
+}
+
 // ── Docs badge helpers ────────────────────────────────────────────────────────
 function updateDocsBadge(job) {
   const badge = document.getElementById('docsTabBadge');
