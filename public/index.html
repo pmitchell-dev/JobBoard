@@ -251,6 +251,7 @@
           <div class="panel-tabs">
             <button class="panel-tab active" id="tabBtnNotes"  onclick="switchRightTab('notes')">📝 Notes</button>
             <button class="panel-tab"        id="tabBtnEmails" onclick="switchRightTab('emails')">📧 Emails <span class="tab-badge" id="emailTabBadge"></span></button>
+            <button class="panel-tab"        id="tabBtnDocs"   onclick="switchRightTab('docs')">📄 Documents <span class="tab-badge" id="docsTabBadge"></span></button>
           </div>
 
           <!-- ── Notes tab ── -->
@@ -316,6 +317,78 @@
           </div>
 
         </div>
+
+        <!-- ── Documents tab ── -->
+        <div class="tab-pane hidden" id="paneDocs">
+
+          <!-- Sub-tab bar: Resume / Cover Letter -->
+          <div class="doc-subtab-bar">
+            <button class="doc-subtab active" id="docSubResume" onclick="switchDocSubTab('resume')">📋 Resume</button>
+            <button class="doc-subtab"        id="docSubCover"  onclick="switchDocSubTab('cover')">✉️ Cover Letter</button>
+          </div>
+
+          <!-- Resume pane -->
+          <div class="doc-editor-pane" id="docPaneResume">
+            <div class="rich-editor-toolbar" id="toolbarResume">
+              <button class="toolbar-btn" onclick="execFmt('bold')"         title="Bold (Ctrl+B)"><b>B</b></button>
+              <button class="toolbar-btn" onclick="execFmt('italic')"       title="Italic (Ctrl+I)"><i>I</i></button>
+              <button class="toolbar-btn" onclick="execFmt('underline')"    title="Underline (Ctrl+U)"><u>U</u></button>
+              <div class="toolbar-sep"></div>
+              <button class="toolbar-btn" onclick="execFmt('formatBlock','h1')"  title="Heading 1">H1</button>
+              <button class="toolbar-btn" onclick="execFmt('formatBlock','h2')"  title="Heading 2">H2</button>
+              <button class="toolbar-btn" onclick="execFmt('formatBlock','p')"   title="Paragraph">¶</button>
+              <div class="toolbar-sep"></div>
+              <button class="toolbar-btn" onclick="execFmt('insertUnorderedList')" title="Bullet list">&#8226;—</button>
+              <button class="toolbar-btn" onclick="execFmt('insertOrderedList')"   title="Numbered list">1.</button>
+              <div class="toolbar-sep"></div>
+              <button class="toolbar-btn toolbar-btn-clear" onclick="clearDocEditor('resume')" title="Clear content">✕ Clear</button>
+            </div>
+            <div class="rich-editor" id="resumeEditor"
+                 contenteditable="true"
+                 data-placeholder="Paste your resume here — formatting from Word is preserved..."
+                 oninput="onDocEditorInput('resume')"
+                 onpaste="onDocEditorPaste(event,'resume')"></div>
+            <div class="doc-actions">
+              <span class="doc-saved-hint" id="resumeSavedHint"></span>
+              <button class="btn-download-doc" onclick="downloadDoc('resume')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Download Resume .doc
+              </button>
+            </div>
+          </div>
+
+          <!-- Cover Letter pane -->
+          <div class="doc-editor-pane hidden" id="docPaneCover">
+            <div class="rich-editor-toolbar" id="toolbarCover">
+              <button class="toolbar-btn" onclick="execFmt('bold')"         title="Bold (Ctrl+B)"><b>B</b></button>
+              <button class="toolbar-btn" onclick="execFmt('italic')"       title="Italic (Ctrl+I)"><i>I</i></button>
+              <button class="toolbar-btn" onclick="execFmt('underline')"    title="Underline (Ctrl+U)"><u>U</u></button>
+              <div class="toolbar-sep"></div>
+              <button class="toolbar-btn" onclick="execFmt('formatBlock','h1')"  title="Heading 1">H1</button>
+              <button class="toolbar-btn" onclick="execFmt('formatBlock','h2')"  title="Heading 2">H2</button>
+              <button class="toolbar-btn" onclick="execFmt('formatBlock','p')"   title="Paragraph">¶</button>
+              <div class="toolbar-sep"></div>
+              <button class="toolbar-btn" onclick="execFmt('insertUnorderedList')" title="Bullet list">&#8226;—</button>
+              <button class="toolbar-btn" onclick="execFmt('insertOrderedList')"   title="Numbered list">1.</button>
+              <div class="toolbar-sep"></div>
+              <button class="toolbar-btn toolbar-btn-clear" onclick="clearDocEditor('cover')" title="Clear content">✕ Clear</button>
+            </div>
+            <div class="rich-editor" id="coverEditor"
+                 contenteditable="true"
+                 data-placeholder="Paste your cover letter here — formatting from Word is preserved..."
+                 oninput="onDocEditorInput('cover')"
+                 onpaste="onDocEditorPaste(event,'cover')"></div>
+            <div class="doc-actions">
+              <span class="doc-saved-hint" id="coverSavedHint"></span>
+              <button class="btn-download-doc" onclick="downloadDoc('cover')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Download Cover Letter .doc
+              </button>
+            </div>
+          </div>
+
+        </div>
+
       </div>
 
       <div class="modal-footer edit-footer">

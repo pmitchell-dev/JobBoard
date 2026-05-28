@@ -814,3 +814,133 @@ kbd {
   .backup-indicator { display: none; }
 }
 
+/* ── Documents Tab ─────────────────────────────────────────────────────────── */
+
+/* Sub-tab toggle bar (Resume / Cover Letter) */
+.doc-subtab-bar {
+  display: flex; gap: 4px;
+  padding: 4px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+.doc-subtab {
+  flex: 1; padding: 7px 12px; border-radius: 7px; border: none;
+  background: transparent; color: var(--text-muted);
+  font-family: var(--font); font-size: 0.78rem; font-weight: 500;
+  cursor: pointer; transition: all 0.15s; text-align: center;
+}
+.doc-subtab:hover { background: var(--surface-hov); color: var(--text); }
+.doc-subtab.active {
+  background: rgba(99,102,241,0.18); color: #a5b4fc;
+  border: 1px solid rgba(99,102,241,0.35); font-weight: 600;
+}
+
+/* Each editor pane wrapper */
+.doc-editor-pane {
+  display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0;
+}
+
+/* Formatting toolbar */
+.rich-editor-toolbar {
+  display: flex; align-items: center; gap: 2px; flex-wrap: wrap;
+  padding: 5px 6px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+.toolbar-btn {
+  min-width: 28px; height: 26px; padding: 0 7px; border-radius: 5px;
+  border: 1px solid transparent; background: transparent;
+  color: var(--text-sub); font-family: var(--font); font-size: 0.78rem;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: all 0.12s; user-select: none;
+}
+.toolbar-btn:hover { background: var(--surface-hov); color: var(--text); border-color: var(--border); }
+.toolbar-btn:active { background: rgba(99,102,241,0.15); color: #a5b4fc; }
+.toolbar-btn-clear { color: var(--text-muted); font-size: 0.72rem; }
+.toolbar-btn-clear:hover { color: #ef4444; background: rgba(239,68,68,0.12); border-color: rgba(239,68,68,0.3); }
+.toolbar-sep {
+  width: 1px; height: 18px;
+  background: var(--border);
+  margin: 0 4px; flex-shrink: 0;
+}
+
+/* The contenteditable editor area */
+.rich-editor {
+  flex: 1;
+  min-height: 260px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(255,255,255,0.025);
+  color: var(--text);
+  font-family: var(--font); font-size: 0.85rem; line-height: 1.65;
+  outline: none;
+  overflow-y: auto;
+  transition: border-color 0.2s, background 0.2s;
+  word-break: break-word;
+  cursor: text;
+}
+.rich-editor:focus {
+  border-color: rgba(99,102,241,0.5);
+  background: rgba(99,102,241,0.04);
+}
+/* Placeholder via CSS data attribute */
+.rich-editor:empty::before {
+  content: attr(data-placeholder);
+  color: var(--text-muted);
+  pointer-events: none;
+  display: block;
+  font-style: italic;
+}
+/* Make pasted Word content blend into the dark theme */
+.rich-editor * { color: inherit !important; background: transparent !important; font-family: inherit !important; }
+.rich-editor h1 { font-size: 1.25rem; font-weight: 700; margin: 0.5em 0 0.3em; }
+.rich-editor h2 { font-size: 1.05rem; font-weight: 700; margin: 0.5em 0 0.25em; }
+.rich-editor h3 { font-size: 0.95rem; font-weight: 600; margin: 0.5em 0 0.2em; }
+.rich-editor p  { margin: 0 0 0.35em; }
+.rich-editor ul, .rich-editor ol { margin: 0.25em 0 0.5em 1.4em; }
+.rich-editor li { margin-bottom: 0.15em; }
+.rich-editor a  { color: #818cf8 !important; text-decoration: underline; }
+.rich-editor hr { border: none; border-top: 1px solid var(--border); margin: 0.75em 0; }
+.rich-editor table { border-collapse: collapse; width: 100%; margin: 0.5em 0; }
+.rich-editor td, .rich-editor th {
+  border: 1px solid var(--border); padding: 5px 8px; font-size: 0.8rem;
+}
+.rich-editor th { background: rgba(99,102,241,0.12); font-weight: 600; }
+/* Preserve <b> and strong visual weight */
+.rich-editor b, .rich-editor strong { font-weight: 700; }
+.rich-editor i, .rich-editor em     { font-style: italic; }
+.rich-editor u                       { text-decoration: underline; }
+
+/* Bottom action bar (saved hint + download button) */
+.doc-actions {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  flex-shrink: 0; padding-top: 2px;
+}
+.doc-saved-hint {
+  font-size: 0.7rem; color: #10b981; opacity: 0;
+  transition: opacity 0.4s; letter-spacing: 0.2px;
+}
+.doc-saved-hint.show { opacity: 1; }
+
+/* Word-blue download button */
+.btn-download-doc {
+  display: flex; align-items: center; gap: 7px;
+  padding: 8px 16px; border-radius: 8px; border: none;
+  background: linear-gradient(135deg, #185abd, #2b7cd3);
+  color: #fff; font-family: var(--font); font-size: 0.8rem; font-weight: 600;
+  cursor: pointer; transition: all 0.2s; letter-spacing: 0.1px;
+  box-shadow: 0 2px 10px rgba(24,90,189,0.35);
+  white-space: nowrap; flex-shrink: 0;
+}
+.btn-download-doc:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 18px rgba(24,90,189,0.5);
+  background: linear-gradient(135deg, #1a66cc, #3386e0);
+}
+.btn-download-doc:active { transform: translateY(0); }
+.btn-download-doc:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }

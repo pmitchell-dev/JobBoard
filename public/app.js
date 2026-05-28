@@ -85,6 +85,7 @@ function buildCard(job, color) {
   const hasScreenshot = job.screenshot;
   const hasNotes      = job.notes && job.notes.length > 0;
   const emailCount    = (job.emails || []).length;
+  const hasDocs       = !!(job.resume || job.coverLetter);
 
   el.innerHTML = `
     <div class="card-company">${esc(job.company)}</div>
@@ -96,6 +97,7 @@ function buildCard(job, color) {
         <span class="card-badge ${hasScreenshot?'active':''}" title="${hasScreenshot?'Has screenshot':'No screenshot'}">📷</span>
         <span class="card-badge ${hasNotes?'active':''}" title="${hasNotes?job.notes.length+' note(s)':'No notes'}">📝</span>
         <span class="card-badge ${emailCount?'active':''}" title="${emailCount?emailCount+' email(s)':'No emails'}">📧</span>
+        <span class="card-badge ${hasDocs?'active':''}" title="${hasDocs?'Has resume/cover letter':'No documents'}">📄</span>
       </div>
     </div>
     ${hasScreenshot ? `<img class="card-thumb visible" src="/cache/${job.id}-screenshot.png?t=${Date.now()}" alt="screenshot">` : ''}
@@ -341,6 +343,18 @@ function openEditModal(jobId) {
   // Reset to notes tab
   switchRightTab('notes');
 
+  // Load documents into editors
+  const resumeEditor = document.getElementById('resumeEditor');
+  const coverEditor  = document.getElementById('coverEditor');
+  resumeEditor.innerHTML = job.resume      || '';
+  coverEditor.innerHTML  = job.coverLetter || '';
+
+  // Reset to Resume sub-tab
+  switchDocSubTab('resume');
+
+  // Update docs badge
+  updateDocsBadge(job);
+
   renderNotes(job.notes || []);
   renderEmails(job.emails || []);
   show('editModal');
@@ -361,6 +375,8 @@ async function saveEditJob() {
     status:      document.getElementById('editStatus').value,
     dateApplied: document.getElementById('editDate').value,
     url:         document.getElementById('editUrl').value.trim(),
+    resume:      document.getElementById('resumeEditor').innerHTML || '',
+    coverLetter: document.getElementById('coverEditor').innerHTML  || '',
   };
   if (!data.title || !data.company) { toast('Title and Company are required.', 'error'); return; }
   try {
@@ -432,8 +448,206 @@ async function deleteNote(noteId) {
 function switchRightTab(tab) {
   document.getElementById('tabBtnNotes').classList.toggle('active',  tab === 'notes');
   document.getElementById('tabBtnEmails').classList.toggle('active', tab === 'emails');
+  document.getElementById('tabBtnDocs').classList.toggle('active',   tab === 'docs');
   document.getElementById('paneNotes').classList.toggle('hidden',  tab !== 'notes');
   document.getElementById('paneEmails').classList.toggle('hidden', tab !== 'emails');
+  document.getElementById('paneDocs').classList.toggle('hidden',   tab !== 'docs');
+}
+
+// ── Documents sub-tab switching (Resume / Cover Letter) ──────────────────────
+function switchDocSubTab(tab) {
+  document.getElementById('docSubResume').classList.toggle('active', tab === 'resume');
+  document.getElementById('docSubCover').classList.toggle('active',  tab === 'cover');
+  document.getElementById('docPaneResume').classList.toggle('hidden', tab !== 'resume');
+  document.getElementById('docPaneCover').classList.toggle('hidden',  tab !== 'cover');
+}
+
+// ── Rich-text toolbar command ─────────────────────────────────────────────────
+function execFmt(cmd, val) {
+  document.execCommand(cmd, false, val || null);
+  // Fire oninput on whichever editor is active so auto-save triggers
+  const active = document.getElementById('paneDocs').contains(document.activeElement)
+    ? document.activeElement.closest('.rich-editor')
+    : null;
+  if (active) active.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+// ── Document editor input handler (debounced auto-save) ──────────────────────
+let _docSaveTimers = {};
+function onDocEditorInput(type) {
+  clearTimeout(_docSaveTimers[type]);
+  _docSaveTimers[type] = setTimeout(() => saveDocToJob(type), 800);
+}
+
+async function saveDocToJob(type) {
+  if (!activeJobId) return;
+  const editorId = type === 'resume' ? 'resumeEditor' : 'coverEditor';
+  const html = document.getElementById(editorId).innerHTML || '';
+  const field = type === 'resume' ? 'resume' : 'coverLetter';
+  try {
+    const updated = await api('PUT', `/api/jobs/${activeJobId}`, { [field]: html });
+    const idx = jobs.findIndex(j => j.id === activeJobId);
+    if (idx !== -1) Object.assign(jobs[idx], updated);
+    flashDocSaved(type);
+    updateDocsBadge(jobs[idx]);
+    // Refresh card badge without full re-render
+    const card = document.getElementById(`card-${activeJobId}`);
+    if (card) {
+      const hasDocs = !!(jobs[idx]?.resume || jobs[idx]?.coverLetter);
+      const badge = [...card.querySelectorAll('.card-badge')].at(-1);
+      if (badge) badge.classList.toggle('active', hasDocs);
+    }
+  } catch (err) {
+    console.warn('Auto-save docs failed:', err.message);
+  }
+}
+
+// ── Paste handler: strip Word's junk styles but keep structure ────────────────
+function onDocEditorPaste(e, type) {
+  e.preventDefault();
+  const html = e.clipboardData.getData('text/html');
+  const text = e.clipboardData.getData('text/plain');
+
+  if (html) {
+    const clean = cleanWordHtml(html);
+    document.execCommand('insertHTML', false, clean);
+  } else if (text) {
+    // Plain text — wrap paragraphs
+    const wrapped = text.split(/\r?\n/).map(line =>
+      line.trim() ? `<p>${escapeHtml(line)}</p>` : '<p><br></p>'
+    ).join('');
+    document.execCommand('insertHTML', false, wrapped);
+  }
+}
+
+function cleanWordHtml(html) {
+  const parser = new DOMParser();
+  const doc    = parser.parseFromString(html, 'text/html');
+
+  // Remove Word-specific tags that add no value
+  doc.querySelectorAll('style, script, meta, link, xml, o\\:p, w\\:sdt, w\\:sdtContent').forEach(el => el.remove());
+
+  // Walk all elements and strip inline styles + class/id noise
+  doc.querySelectorAll('*').forEach(el => {
+    // Keep structural elements clean, strip decoration
+    el.removeAttribute('class');
+    el.removeAttribute('id');
+    el.removeAttribute('lang');
+    el.removeAttribute('xml:lang');
+
+    // For inline style: only keep font-weight, font-style, text-decoration
+    const style = el.getAttribute('style') || '';
+    const kept = [];
+    if (/font-weight\s*:\s*bold|font-weight\s*:\s*[7-9]\d{2}/i.test(style)) kept.push('font-weight:bold');
+    if (/font-style\s*:\s*italic/i.test(style))                              kept.push('font-style:italic');
+    if (/text-decoration\s*:[^;]*underline/i.test(style))                   kept.push('text-decoration:underline');
+    if (kept.length) el.setAttribute('style', kept.join(';'));
+    else el.removeAttribute('style');
+  });
+
+  // Unwrap meaningless <span>s (no remaining attributes)
+  doc.querySelectorAll('span').forEach(span => {
+    if (!span.hasAttributes()) {
+      const parent = span.parentNode;
+      while (span.firstChild) parent.insertBefore(span.firstChild, span);
+      parent.removeChild(span);
+    }
+  });
+
+  // Flatten body HTML
+  return doc.body.innerHTML;
+}
+
+function escapeHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function clearDocEditor(type) {
+  if (!confirm(`Clear ${type === 'resume' ? 'resume' : 'cover letter'} content? This cannot be undone.`)) return;
+  const editorId = type === 'resume' ? 'resumeEditor' : 'coverEditor';
+  document.getElementById(editorId).innerHTML = '';
+  onDocEditorInput(type);
+}
+
+// ── Docs badge helpers ────────────────────────────────────────────────────────
+function updateDocsBadge(job) {
+  const badge = document.getElementById('docsTabBadge');
+  if (!badge) return;
+  const count = (job?.resume ? 1 : 0) + (job?.coverLetter ? 1 : 0);
+  badge.textContent = count || '';
+  badge.classList.toggle('visible', count > 0);
+}
+
+function flashDocSaved(type) {
+  const el = document.getElementById(type === 'resume' ? 'resumeSavedHint' : 'coverSavedHint');
+  if (!el) return;
+  el.textContent = 'Saved ✓';
+  el.classList.add('show');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove('show'), 2000);
+}
+
+// ── One-click .doc download ───────────────────────────────────────────────────
+function downloadDoc(type) {
+  if (!activeJobId) return;
+  const job = jobs.find(j => j.id === activeJobId);
+  if (!job) return;
+
+  const editorId = type === 'resume' ? 'resumeEditor' : 'coverEditor';
+  const html = document.getElementById(editorId).innerHTML || '';
+  if (!html.trim() || html === '<br>') {
+    toast(`No ${type === 'resume' ? 'resume' : 'cover letter'} content to download.`, 'error');
+    return;
+  }
+
+  const label    = type === 'resume' ? 'Resume' : 'Cover Letter';
+  const safeName = `${label} - ${job.company} - ${job.title}`.replace(/[/\\?%*:|"<>]/g, '-');
+
+  // Word-compatible HTML document wrapper
+  const wordDoc = `
+<html xmlns:o="urn:schemas-microsoft-com:office:office"
+      xmlns:w="urn:schemas-microsoft-com:office:word"
+      xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+  <meta charset="utf-8" />
+  <!--[if gte mso 9]>
+  <xml>
+    <w:WordDocument>
+      <w:View>Print</w:View>
+      <w:Zoom>100</w:Zoom>
+    </w:WordDocument>
+  </xml>
+  <![endif]-->
+  <style>
+    body { font-family: Calibri, Arial, sans-serif; font-size: 11pt; line-height: 1.4; margin: 1in; color: #000; }
+    h1   { font-size: 16pt; font-weight: bold; margin-bottom: 6pt; }
+    h2   { font-size: 13pt; font-weight: bold; margin-bottom: 4pt; }
+    h3   { font-size: 11pt; font-weight: bold; margin-bottom: 3pt; }
+    p    { margin: 0 0 6pt; }
+    ul   { margin: 0 0 6pt 18pt; list-style-type: disc; }
+    ol   { margin: 0 0 6pt 18pt; }
+    li   { margin-bottom: 2pt; }
+    table { border-collapse: collapse; width: 100%; margin-bottom: 6pt; }
+    td, th { border: 1px solid #ccc; padding: 4pt 6pt; font-size: 10pt; }
+    a  { color: #1155cc; }
+    b, strong { font-weight: bold; }
+    i, em     { font-style: italic; }
+    u         { text-decoration: underline; }
+  </style>
+</head>
+<body>${html}</body>
+</html>`;
+
+  const blob = new Blob([wordDoc], { type: 'application/msword' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `${safeName}.doc`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  toast(`📄 "${safeName}.doc" downloaded`, 'success');
 }
 
 // ── Emails ───────────────────────────────────────────────────────────────────
@@ -750,6 +964,9 @@ function onZonePaste(e) {
 function setupGlobalListeners() {
   // Ctrl+V paste — route to whichever modal is open
   document.addEventListener('paste', e => {
+    // Don't intercept paste inside the rich document editors
+    if (e.target.closest && e.target.closest('.rich-editor')) return;
+
     const addOpen  = !document.getElementById('addModal').classList.contains('hidden');
     const editOpen = !document.getElementById('editModal').classList.contains('hidden');
     const items = e.clipboardData?.items || [];
