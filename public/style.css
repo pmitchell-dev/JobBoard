@@ -967,3 +967,90 @@ kbd {
 }
 .btn-download-doc:active { transform: translateY(0); }
 .btn-download-doc:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+/* ── Other Documents / Attachments ─────────────────────────────────────────── */
+
+/* Sub-tab count badge (inside the "Other" doc-subtab button) */
+.doc-other-badge {
+  min-width: 16px; height: 16px; padding: 0 5px; border-radius: 8px;
+  background: rgba(99,102,241,0.25); color: #a5b4fc;
+  font-size: 0.65rem; font-weight: 700; margin-left: 4px;
+  display: none; align-items: center; justify-content: center;
+}
+.doc-other-badge.visible { display: inline-flex; }
+
+/* Drop zone */
+.attach-drop-zone {
+  display: flex; align-items: center; gap: 14px;
+  padding: 16px 18px; border-radius: 10px; flex-shrink: 0;
+  border: 2px dashed rgba(99,102,241,0.35);
+  background: rgba(99,102,241,0.04);
+  cursor: pointer; transition: all 0.2s; user-select: none;
+}
+.attach-drop-zone:hover {
+  border-color: rgba(99,102,241,0.6);
+  background: rgba(99,102,241,0.08);
+}
+.attach-drop-zone.drag-active {
+  border-color: #6366f1;
+  background: rgba(99,102,241,0.14);
+  box-shadow: 0 0 0 4px rgba(99,102,241,0.12);
+}
+.attach-drop-text { display: flex; flex-direction: column; gap: 3px; }
+.attach-drop-text strong { font-size: 0.82rem; color: var(--text); }
+.attach-drop-text span   { font-size: 0.72rem; color: var(--text-muted); }
+
+/* Log header */
+.attach-log-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 2px; flex-shrink: 0;
+}
+
+/* Attachment list */
+.attach-list { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; flex: 1; }
+
+/* Single attachment row */
+.attach-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px; border-radius: 8px;
+  background: var(--surface); border: 1px solid var(--border);
+  transition: border-color 0.15s;
+  min-width: 0;
+}
+.attach-item:hover { border-color: var(--border-hov); }
+
+.attach-item-icon { font-size: 1.1rem; flex-shrink: 0; line-height: 1; }
+
+.attach-item-info { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.attach-item-name {
+  font-size: 0.8rem; font-weight: 500; color: var(--text);
+  text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  transition: color 0.15s;
+}
+.attach-item-name:hover { color: #818cf8; text-decoration: underline; }
+.attach-item-meta { font-size: 0.68rem; color: var(--text-muted); }
+
+.attach-item-dl {
+  width: 28px; height: 28px; flex-shrink: 0; border-radius: 7px;
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--text-sub); display: flex; align-items: center; justify-content: center;
+  text-decoration: none; transition: all 0.15s; opacity: 0;
+}
+.attach-item:hover .attach-item-dl { opacity: 1; }
+.attach-item-dl:hover { background: var(--surface-hov); color: var(--text); border-color: var(--border-hov); }
+
+.attach-item-delete {
+  width: 28px; height: 28px; flex-shrink: 0; border-radius: 7px;
+  border: none; background: transparent; color: var(--text-muted);
+  cursor: pointer; font-size: 0.7rem; display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s; opacity: 0;
+}
+.attach-item:hover .attach-item-delete { opacity: 1; }
+.attach-item-delete:hover { background: rgba(239,68,68,0.18); color: #ef4444; }
+
+.attach-uploading {
+  opacity: 0.65; border-style: dashed;
+  animation: pulse-green 1.5s ease-in-out infinite;
+}
+.attach-uploading-name { font-size: 0.8rem; color: var(--text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.attach-uploading-label { font-size: 0.72rem; color: var(--text-muted); flex-shrink: 0; }

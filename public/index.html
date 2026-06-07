@@ -318,10 +318,11 @@
         <!-- ── Documents tab ── -->
         <div class="tab-pane hidden" id="paneDocs">
 
-          <!-- Sub-tab bar: Resume / Cover Letter -->
+          <!-- Sub-tab bar: Resume / Cover Letter / Other -->
           <div class="doc-subtab-bar">
             <button class="doc-subtab active" id="docSubResume" onclick="switchDocSubTab('resume')">📋 Resume</button>
             <button class="doc-subtab"        id="docSubCover"  onclick="switchDocSubTab('cover')">✉️ Cover Letter</button>
+            <button class="doc-subtab"        id="docSubOther"  onclick="switchDocSubTab('other')">📁 Other <span class="doc-other-badge" id="docOtherBadge"></span></button>
           </div>
 
           <!-- Resume pane -->
@@ -383,6 +384,31 @@
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                 Download Cover Letter .doc
               </button>
+            </div>
+          </div>
+
+          <!-- Other Documents pane -->
+          <div class="doc-editor-pane hidden" id="docPaneOther">
+            <div class="attach-drop-zone" id="attachDropZone"
+                 ondragover="onAttachDragOver(event)"
+                 ondragleave="onAttachDragLeave(event)"
+                 ondrop="onAttachDrop(event)"
+                 onclick="document.getElementById('attachFileInput').click()">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.55">
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+              </svg>
+              <div class="attach-drop-text">
+                <strong>Drop files here</strong>
+                <span>or click to browse — any file type, up to 100 MB each</span>
+              </div>
+            </div>
+            <input type="file" id="attachFileInput" multiple class="hidden" onchange="onAttachFileChange(event)" />
+            <div class="attach-log-header">
+              <span class="notes-log-title">Attached Files</span>
+              <span class="notes-count" id="attachCount">0 files</span>
+            </div>
+            <div class="attach-list" id="attachList">
+              <div class="notes-empty">No files attached yet. Drop any file above to keep it with this job.</div>
             </div>
           </div>
 

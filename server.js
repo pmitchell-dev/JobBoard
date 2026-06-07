@@ -120,6 +120,7 @@ app.post('/api/jobs', (req, res) => {
     notes:       [],
     emails:      [],
     screenshots: [],
+    attachments: [],
     cached:      false,
     createdAt:   new Date().toISOString(),
     updatedAt:   new Date().toISOString(),
@@ -163,6 +164,12 @@ app.delete('/api/jobs/:id', (req, res) => {
   // Legacy single screenshot
   const legacyFile = path.join(CACHE_DIR, `${req.params.id}-screenshot.png`);
   if (fs.existsSync(legacyFile)) fs.unlinkSync(legacyFile);
+
+  // Clean up all attachments
+  (job.attachments || []).forEach(a => {
+    const f = path.join(CACHE_DIR, a.filename);
+    if (fs.existsSync(f)) fs.unlinkSync(f);
+  });
 
   res.json({ success: true });
 });
@@ -388,6 +395,71 @@ app.put('/api/notepad', (req, res) => {
   }
 });
 
+// ── Attachments (Other Documents) ───────────────────────────────────────────
+
+// POST /api/jobs/:id/attachments  — upload a file attachment
+const attachUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, CACHE_DIR),
+    filename:    (req, file, cb) => {
+      const attachId = uuidv4();
+      const ext = path.extname(file.originalname) || '';
+      cb(null, `${req.params.id}-attach-${attachId}${ext}`);
+    },
+  }),
+  limits: { fileSize: 100 * 1024 * 1024 }, // 100 MB
+});
+
+app.post('/api/jobs/:id/attachments', attachUpload.single('file'), (req, res) => {
+  const jobId = req.params.id;
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+  const jobs = readJobs();
+  const idx  = jobs.findIndex(j => j.id === jobId);
+  if (idx === -1) {
+    // Clean up the uploaded file
+    fs.unlinkSync(req.file.path);
+    return res.status(404).json({ error: 'Job not found' });
+  }
+
+  if (!Array.isArray(jobs[idx].attachments)) jobs[idx].attachments = [];
+  const attachment = {
+    id:           path.basename(req.file.filename, path.extname(req.file.filename)).split('-attach-')[1] || uuidv4(),
+    filename:     req.file.filename,
+    originalName: req.file.originalname,
+    size:         req.file.size,
+    mimetype:     req.file.mimetype,
+    addedAt:      new Date().toISOString(),
+  };
+  jobs[idx].attachments.push(attachment);
+  jobs[idx].updatedAt = new Date().toISOString();
+  writeJobs(jobs);
+
+  res.json({ success: true, attachment, url: `/cache/${req.file.filename}` });
+});
+
+// DELETE /api/jobs/:id/attachments/:attachId  — remove one attachment
+app.delete('/api/jobs/:id/attachments/:attachId', (req, res) => {
+  const { id: jobId, attachId } = req.params;
+
+  const jobs = readJobs();
+  const idx  = jobs.findIndex(j => j.id === jobId);
+  if (idx === -1) return res.status(404).json({ error: 'Job not found' });
+
+  const job = jobs[idx];
+  if (Array.isArray(job.attachments)) {
+    const att = job.attachments.find(a => a.id === attachId);
+    if (att) {
+      const f = path.join(CACHE_DIR, att.filename);
+      if (fs.existsSync(f)) fs.unlinkSync(f);
+    }
+    job.attachments = job.attachments.filter(a => a.id !== attachId);
+  }
+  job.updatedAt = new Date().toISOString();
+  writeJobs(jobs);
+  res.json({ success: true });
+});
+
 // GET /api/backup-status
 app.get('/api/backup-status', (req, res) => {
   const hasRolling = fs.existsSync(BACKUP_FILE);
@@ -422,10 +494,9 @@ app.get('/api/export', (req, res) => {
   if (fs.existsSync(JOBS_FILE))    archive.file(JOBS_FILE,    { name: 'jobs.json' });
   if (fs.existsSync(NOTEPAD_FILE)) archive.file(NOTEPAD_FILE, { name: 'notepad.json' });
 
-  // Cache directory (screenshots + PDFs)
+  // Cache directory (screenshots + PDFs + attachments)
   if (fs.existsSync(CACHE_DIR)) {
-    const cacheFiles = fs.readdirSync(CACHE_DIR)
-      .filter(f => f.endsWith('.png') || f.endsWith('.pdf'));
+    const cacheFiles = fs.readdirSync(CACHE_DIR);
     cacheFiles.forEach(f => {
       archive.file(path.join(CACHE_DIR, f), { name: `cache/${f}` });
     });
@@ -506,10 +577,11 @@ app.post('/api/import', upload.single('file'), async (req, res) => {
         // Copy cache files only for newly added jobs
         const newIds = new Set(toAdd.map(j => j.id));
         for (const [entryPath, entry] of Object.entries(entryMap)) {
-          if (entryPath.startsWith('cache/') && (entryPath.endsWith('.png') || entryPath.endsWith('.pdf'))) {
+          if (entryPath.startsWith('cache/')) {
             const filename = path.basename(entryPath);
-            const jobId = filename.replace(/-screenshot\.png$/, '').replace(/\.pdf$/, '');
-            if (newIds.has(jobId)) {
+            // Match by job ID prefix (screenshots, PDFs, and attachments all start with jobId)
+            const isNew = [...newIds].some(id => filename.startsWith(id));
+            if (isNew) {
               const buf = await entry.buffer();
               fs.writeFileSync(path.join(CACHE_DIR, filename), buf);
             }

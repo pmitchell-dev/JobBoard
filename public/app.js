@@ -85,7 +85,7 @@ function buildCard(job, color) {
   const screenshotCount = (job.screenshots || []).length;
   const hasNotes        = job.notes && job.notes.length > 0;
   const emailCount      = (job.emails || []).length;
-  const hasDocs         = !!(job.resume || job.coverLetter);
+  const hasDocs         = !!(job.resume || job.coverLetter || (job.attachments || []).length);
 
   el.innerHTML = `
     <div class="card-company">${esc(job.company)}</div>
@@ -347,6 +347,7 @@ function openEditModal(jobId) {
 
   renderNotes(job.notes || []);
   renderEmails(job.emails || []);
+  renderAttachments(job.attachments || []);
   show('editModal');
   document.getElementById('screenshotZone').addEventListener('paste', onZonePaste);
 }
@@ -374,9 +375,9 @@ async function saveEditJob() {
     const updated = await api('PUT', `/api/jobs/${jobId}`, data);
     const idx = jobs.findIndex(j => j.id === jobId);
     if (idx !== -1) {
-      // Preserve in-memory notes/emails/screenshots — server may return stale versions
+      // Preserve in-memory notes/emails/screenshots/attachments — server may return stale versions
       // if a concurrent add-note/email was in-flight when PUT was sent
-      const { notes, emails, screenshots, ...rest } = updated;
+      const { notes, emails, screenshots, attachments, ...rest } = updated;
       Object.assign(jobs[idx], rest);
     }
     renderBoard(); renderStats(); applyFilter();
@@ -451,12 +452,14 @@ function switchRightTab(tab) {
   document.getElementById('paneDocs').classList.toggle('hidden',   tab !== 'docs');
 }
 
-// ── Documents sub-tab switching (Resume / Cover Letter) ──────────────────────
+// ── Documents sub-tab switching (Resume / Cover Letter / Other) ────────────────
 function switchDocSubTab(tab) {
   document.getElementById('docSubResume').classList.toggle('active', tab === 'resume');
   document.getElementById('docSubCover').classList.toggle('active',  tab === 'cover');
+  document.getElementById('docSubOther').classList.toggle('active',  tab === 'other');
   document.getElementById('docPaneResume').classList.toggle('hidden', tab !== 'resume');
   document.getElementById('docPaneCover').classList.toggle('hidden',  tab !== 'cover');
+  document.getElementById('docPaneOther').classList.toggle('hidden',  tab !== 'other');
 }
 
 // ── Rich-text toolbar command ─────────────────────────────────────────────────
@@ -486,8 +489,8 @@ async function saveDocToJob(type) {
     const updated = await api('PUT', `/api/jobs/${jobId}`, { [field]: html });
     const idx = jobs.findIndex(j => j.id === jobId);
     if (idx !== -1) {
-      // Preserve in-memory notes/emails/screenshots
-      const { notes, emails, screenshots, ...rest } = updated;
+      // Preserve in-memory notes/emails/screenshots/attachments
+      const { notes, emails, screenshots, attachments, ...rest } = updated;
       Object.assign(jobs[idx], rest);
     }
     flashDocSaved(type);
@@ -496,7 +499,7 @@ async function saveDocToJob(type) {
     // Refresh doc card badge without full re-render
     const card = document.getElementById(`card-${jobId}`);
     if (card && job) {
-      const hasDocs = !!(job.resume || job.coverLetter);
+      const hasDocs = !!(job.resume || job.coverLetter || (job.attachments || []).length);
       const badge = [...card.querySelectorAll('.card-badge')].at(-1);
       if (badge) badge.classList.toggle('active', hasDocs);
     }
@@ -613,9 +616,17 @@ async function uploadDocx(event) {
 function updateDocsBadge(job) {
   const badge = document.getElementById('docsTabBadge');
   if (!badge) return;
-  const count = (job?.resume ? 1 : 0) + (job?.coverLetter ? 1 : 0);
+  const attCount = job?.attachments?.length || 0;
+  const count = (job?.resume ? 1 : 0) + (job?.coverLetter ? 1 : 0) + attCount;
   badge.textContent = count || '';
   badge.classList.toggle('visible', count > 0);
+
+  // Other-docs sub-tab badge
+  const otherBadge = document.getElementById('docOtherBadge');
+  if (otherBadge) {
+    otherBadge.textContent = attCount || '';
+    otherBadge.classList.toggle('visible', attCount > 0);
+  }
 }
 
 function flashDocSaved(type) {
@@ -1202,6 +1213,133 @@ function openLightbox(src) {
   show('lightbox');
 }
 function closeLightbox() { hide('lightbox'); }
+
+
+// ── Attachments (Other Documents) ─────────────────────────────────────────
+
+function onAttachDragOver(e) {
+  e.preventDefault(); e.stopPropagation();
+  document.getElementById('attachDropZone').classList.add('drag-active');
+}
+function onAttachDragLeave(e) {
+  e.stopPropagation();
+  if (!e.currentTarget.contains(e.relatedTarget))
+    document.getElementById('attachDropZone').classList.remove('drag-active');
+}
+function onAttachDrop(e) {
+  e.preventDefault(); e.stopPropagation();
+  document.getElementById('attachDropZone').classList.remove('drag-active');
+  const files = [...e.dataTransfer.files];
+  files.forEach(uploadAttachment);
+}
+function onAttachFileChange(e) {
+  const files = [...e.target.files];
+  files.forEach(uploadAttachment);
+  e.target.value = '';
+}
+
+async function uploadAttachment(file) {
+  const jobId = activeJobId;
+  if (!jobId) return;
+  const list = document.getElementById('attachList');
+  const tempId = 'attach-' + Date.now();
+  const placeholder = document.createElement('div');
+  placeholder.className = 'attach-item attach-uploading';
+  placeholder.id = tempId;
+  placeholder.innerHTML = '<span class="attach-item-icon">&#x23F3;</span><span class="attach-uploading-name">' + esc(file.name) + '</span><span class="attach-uploading-label">Uploading…</span>';
+  list.querySelector('.notes-empty')?.remove();
+  list.appendChild(placeholder);
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch('/api/jobs/' + jobId + '/attachments', { method: 'POST', body: formData });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || res.statusText); }
+    const data = await res.json();
+    const attachment = data.attachment;
+    const job = jobs.find(j => j.id === jobId);
+    if (job) {
+      if (!Array.isArray(job.attachments)) job.attachments = [];
+      job.attachments.push(attachment);
+      renderAttachments(job.attachments);
+      updateDocsBadge(job);
+      const card = document.getElementById('card-' + jobId);
+      if (card) { const badge = [...card.querySelectorAll('.card-badge')].at(-1); if (badge) badge.classList.add('active'); }
+    }
+    toast('"' + file.name + '" attached ✓', 'success');
+  } catch (err) {
+    toast('Upload failed: ' + err.message, 'error');
+    document.getElementById(tempId)?.remove();
+    const job = jobs.find(j => j.id === jobId);
+    if (job && !(job.attachments || []).length)
+      list.innerHTML = '<div class="notes-empty">No files attached yet. Drop any file above to keep it with this job.</div>';
+  }
+}
+
+async function deleteAttachment(attachId) {
+  const jobId = activeJobId;
+  if (!jobId || !attachId) return;
+  try {
+    await api('DELETE', '/api/jobs/' + jobId + '/attachments/' + attachId);
+    const job = jobs.find(j => j.id === jobId);
+    if (job) {
+      job.attachments = (job.attachments || []).filter(a => a.id !== attachId);
+      renderAttachments(job.attachments);
+      updateDocsBadge(job);
+      const card = document.getElementById('card-' + jobId);
+      if (card) {
+        const hasDocs = !!(job.resume || job.coverLetter || (job.attachments || []).length);
+        const badge = [...card.querySelectorAll('.card-badge')].at(-1);
+        if (badge) badge.classList.toggle('active', hasDocs);
+      }
+    }
+    toast('Attachment removed.', 'info');
+  } catch (err) { toast('Error: ' + err.message, 'error'); }
+}
+
+function renderAttachments(attachments) {
+  const list  = document.getElementById('attachList');
+  const count = document.getElementById('attachCount');
+  if (!list) return;
+  count.textContent = attachments.length === 1 ? '1 file' : (attachments.length + ' files');
+  if (!attachments.length) {
+    list.innerHTML = '<div class="notes-empty">No files attached yet. Drop any file above to keep it with this job.</div>';
+    return;
+  }
+  const dlIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
+  list.innerHTML = [...attachments].reverse().map(function(a) {
+    return '<div class="attach-item" id="attitem-' + a.id + '">' +
+      '<span class="attach-item-icon">' + attachIcon(a.originalName, a.mimetype) + '</span>' +
+      '<div class="attach-item-info">' +
+        '<a class="attach-item-name" href="/cache/' + a.filename + '" target="_blank" rel="noopener" title="Open file">' + esc(a.originalName) + '</a>' +
+        '<span class="attach-item-meta">' + fmtFileSize(a.size) + ' &middot; ' + fmtTimestamp(a.addedAt) + '</span>' +
+      '</div>' +
+      '<a class="attach-item-dl" href="/cache/' + a.filename + '" download="' + esc(a.originalName) + '" title="Download">' + dlIcon + '</a>' +
+      '<button class="attach-item-delete" onclick="deleteAttachment(\'' + a.id + '\')" title="Remove">\u2715</button>' +
+    '</div>';
+  }).join('');
+}
+
+function attachIcon(name, mime) {
+  const ext = (name || '').split('.').pop().toLowerCase();
+  if (ext === 'pdf') return '📕';
+  if (ext === 'doc' || ext === 'docx') return '📝';
+  if (ext === 'xls' || ext === 'xlsx' || ext === 'csv') return '📊';
+  if (ext === 'ppt' || ext === 'pptx') return '📋';
+  if (['png','jpg','jpeg','gif','webp','svg'].includes(ext)) return '🖼️';
+  if (['zip','rar','7z','tar','gz'].includes(ext)) return '🗜️';
+  if (['mp4','mov','avi','mkv'].includes(ext)) return '🎥';
+  if (['mp3','wav','ogg'].includes(ext)) return '🎵';
+  if (['txt','md','log'].includes(ext)) return '📄';
+  if ((mime || '').startsWith('image/')) return '🖼️';
+  return '📎';
+}
+
+function fmtFileSize(bytes) {
+  if (!bytes) return '—';
+  if (bytes < 1024)        return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+}
 
 // ── Export / Import ─────────────────────────────────────────────────────
 
