@@ -1352,26 +1352,19 @@ async function exportJobPdf() {
   btn.disabled = true;
   btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Generating…';
 
-  try {
-    const res = await fetch(`/api/jobs/${activeJobId}/export-pdf`);
-    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || res.statusText); }
-    const blob = await res.blob();
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    const safeName = `${job.title} - ${job.company}`.replace(/[/\\?%*:|"<>]/g, '-');
-    a.href     = url;
-    a.download = `${safeName}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-    toast('📄 PDF downloaded!', 'success');
-  } catch (err) {
-    toast('PDF export failed: ' + err.message, 'error');
-  } finally {
+  const a = document.createElement('a');
+  a.href = `/api/jobs/${activeJobId}/export-pdf`;
+  a.download = '';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+
+  // Reset button after a reasonable delay assuming the download started
+  setTimeout(() => {
     btn.disabled = false;
     btn.innerHTML = origHTML;
-  }
+    toast('📄 PDF export started', 'success');
+  }, 2000);
 }
 
 // ── Export / Import ─────────────────────────────────────────────────────
