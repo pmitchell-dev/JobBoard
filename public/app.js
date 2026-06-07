@@ -1352,19 +1352,29 @@ async function exportJobPdf() {
   btn.disabled = true;
   btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Generating…';
 
-  const a = document.createElement('a');
-  a.href = `/api/jobs/${activeJobId}/export-pdf`;
-  a.download = '';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-
-  // Reset button after a reasonable delay assuming the download started
-  setTimeout(() => {
+  try {
+    const res = await fetch(`/api/jobs/${activeJobId}/export-pdf`);
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || res.statusText); }
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    const safeName = `${job.title} - ${job.company}`.replace(/[/\\?%*:|"<>]/g, '-');
+    a.href     = url;
+    a.download = `${safeName}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    // Do NOT call URL.revokeObjectURL(url) here.
+    // Some browsers/antivirus scanners need the blob URL kept alive for several seconds
+    // to complete the disk write, otherwise it fails and leaves a .crdownload file.
+    // The small 1MB memory leak per export is acceptable and cleared on page refresh.
+    toast('📄 PDF downloaded!', 'success');
+  } catch (err) {
+    toast('PDF export failed: ' + err.message, 'error');
+  } finally {
     btn.disabled = false;
     btn.innerHTML = origHTML;
-    toast('📄 PDF export started', 'success');
-  }, 2000);
+  }
 }
 
 // ── Export / Import ─────────────────────────────────────────────────────
