@@ -700,10 +700,13 @@ app.get('/api/jobs/:id/export-pdf', async (req, res) => {
       </div>`,
     });
 
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${safeName}.pdf"`);
-    res.send(pdfBuffer);
-    console.log(`[PDF Export] Generated: ${safeName}.pdf`);
+    const filename = `export-${job.id}-${Date.now()}.pdf`;
+    const filepath = path.join(CACHE_DIR, filename);
+    fs.writeFileSync(filepath, pdfBuffer);
+
+    console.log(`[PDF Export] Generated: ${filename}`);
+    res.json({ success: true, downloadUrl: `/cache/${filename}`, filename: `${safeName}.pdf` });
+
   } catch (err) {
     console.error('[PDF Export] Failed:', err.message);
     res.status(500).json({ error: err.message });
@@ -711,6 +714,9 @@ app.get('/api/jobs/:id/export-pdf', async (req, res) => {
     if (browser) await browser.close();
   }
 });
+
+// GET /cache/:filename  — serve cached files statically for export downloads
+app.use('/cache', express.static(CACHE_DIR));
 
 // GET /api/backup-status
 app.get('/api/backup-status', (req, res) => {

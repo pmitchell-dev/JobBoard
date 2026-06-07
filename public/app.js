@@ -1354,20 +1354,17 @@ async function exportJobPdf() {
 
   try {
     const res = await fetch(`/api/jobs/${activeJobId}/export-pdf`);
-    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || res.statusText); }
-    const blob = await res.blob();
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    const safeName = `${job.title} - ${job.company}`.replace(/[/\\?%*:|"<>]/g, '-');
-    a.href     = url;
-    a.download = `${safeName}.pdf`;
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || res.statusText);
+
+    // Create a temporary anchor to natively download the cached file
+    const a = document.createElement('a');
+    a.href = data.downloadUrl;
+    a.download = data.filename;
     document.body.appendChild(a);
     a.click();
     a.remove();
-    // Do NOT call URL.revokeObjectURL(url) here.
-    // Some browsers/antivirus scanners need the blob URL kept alive for several seconds
-    // to complete the disk write, otherwise it fails and leaves a .crdownload file.
-    // The small 1MB memory leak per export is acceptable and cleared on page refresh.
+    
     toast('📄 PDF downloaded!', 'success');
   } catch (err) {
     toast('PDF export failed: ' + err.message, 'error');
