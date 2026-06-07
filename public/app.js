@@ -1364,7 +1364,7 @@ async function exportJobPdf() {
     document.body.appendChild(a);
     a.click();
     a.remove();
-    URL.revokeObjectURL(url);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
     toast('📄 PDF downloaded!', 'success');
   } catch (err) {
     toast('PDF export failed: ' + err.message, 'error');
