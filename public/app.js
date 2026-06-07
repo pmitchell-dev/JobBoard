@@ -1341,6 +1341,39 @@ function fmtFileSize(bytes) {
   return (bytes / 1024 / 1024).toFixed(1) + ' MB';
 }
 
+// ── Job PDF Export ───────────────────────────────────────────────────────────
+async function exportJobPdf() {
+  if (!activeJobId) return;
+  const job = jobs.find(j => j.id === activeJobId);
+  if (!job) return;
+
+  const btn = document.getElementById('exportPdfBtn');
+  const origHTML = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Generating…';
+
+  try {
+    const res = await fetch(`/api/jobs/${activeJobId}/export-pdf`);
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || res.statusText); }
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    const safeName = `${job.title} - ${job.company}`.replace(/[/\\?%*:|"<>]/g, '-');
+    a.href     = url;
+    a.download = `${safeName}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast('📄 PDF downloaded!', 'success');
+  } catch (err) {
+    toast('PDF export failed: ' + err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = origHTML;
+  }
+}
+
 // ── Export / Import ─────────────────────────────────────────────────────
 
 // Kick off a server-side export download

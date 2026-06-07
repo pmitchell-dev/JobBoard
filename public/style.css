@@ -1054,3 +1054,21 @@ kbd {
 }
 .attach-uploading-name { font-size: 0.8rem; color: var(--text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .attach-uploading-label { font-size: 0.72rem; color: var(--text-muted); flex-shrink: 0; }
+
+/* ── Export PDF Button ─────────────────────────────────────────────────────── */
+.btn-export-pdf {
+  display: flex; align-items: center; gap: 7px;
+  padding: 9px 16px; border-radius: 8px; border: none;
+  background: linear-gradient(135deg, #b91c1c, #dc2626);
+  color: #fff; font-family: var(--font); font-size: 0.82rem; font-weight: 600;
+  cursor: pointer; transition: all 0.2s; letter-spacing: 0.1px;
+  box-shadow: 0 2px 10px rgba(185,28,28,0.3);
+  white-space: nowrap; flex-shrink: 0;
+}
+.btn-export-pdf:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 18px rgba(185,28,28,0.45);
+  background: linear-gradient(135deg, #c41f1f, #ef4444);
+}
+.btn-export-pdf:active { transform: translateY(0); }
+.btn-export-pdf:disabled { opacity: 0.55; cursor: not-allowed; transform: none; box-shadow: none; }

@@ -460,6 +460,258 @@ app.delete('/api/jobs/:id/attachments/:attachId', (req, res) => {
   res.json({ success: true });
 });
 
+// GET /api/jobs/:id/export-pdf  — generate a full job dossier PDF
+app.get('/api/jobs/:id/export-pdf', async (req, res) => {
+  const job = readJobs().find(j => j.id === req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+
+  // Helper: read a cache file as a base64 data URI
+  function fileToDataUri(filename) {
+    try {
+      const filepath = path.join(CACHE_DIR, filename);
+      if (!fs.existsSync(filepath)) return null;
+      const ext  = path.extname(filename).slice(1).toLowerCase();
+      const mime = ext === 'png' ? 'image/png'
+                 : ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg'
+                 : ext === 'webp' ? 'image/webp'
+                 : ext === 'gif'  ? 'image/gif'
+                 : null;
+      if (!mime) return null;
+      const data = fs.readFileSync(filepath).toString('base64');
+      return `data:${mime};base64,${data}`;
+    } catch { return null; }
+  }
+
+  // Helper: format a date string nicely
+  function fmtDate(d) {
+    if (!d) return '—';
+    try {
+      return new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    } catch { return d; }
+  }
+  function fmtTs(iso) {
+    if (!iso) return '—';
+    try {
+      return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+    } catch { return iso; }
+  }
+  function fmtSize(bytes) {
+    if (!bytes) return '';
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+  }
+
+  const STATUS_LABELS = { applied: 'Applied', screening: 'Screening', interview: 'Interview', offer: 'Offer', rejected: 'Rejected' };
+  const STATUS_COLORS = { applied: '#6366f1', screening: '#f59e0b', interview: '#3b82f6', offer: '#10b981', rejected: '#ef4444' };
+  const statusLabel = STATUS_LABELS[job.status] || job.status;
+  const statusColor = STATUS_COLORS[job.status] || '#6366f1';
+
+  // Build screenshot img tags
+  const screenshots = (job.screenshots || []).map(s => {
+    const uri = fileToDataUri(s.filename);
+    return uri ? `<div class="ss-wrap"><img src="${uri}" alt="Screenshot" /></div>` : '';
+  }).filter(Boolean).join('');
+
+  // Build notes HTML
+  const notesHtml = (job.notes || []).length === 0
+    ? '<p class="empty">No notes recorded.</p>'
+    : [...(job.notes || [])].reverse().map(n => `
+        <div class="note-entry">
+          <div class="note-ts">${fmtTs(n.timestamp)}</div>
+          <div class="note-body">${n.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>')}</div>
+        </div>`).join('');
+
+  // Build emails HTML
+  const emailsHtml = (job.emails || []).length === 0
+    ? '<p class="empty">No emails recorded.</p>'
+    : [...(job.emails || [])].sort((a,b) => (b.date||b.addedAt) < (a.date||a.addedAt) ? -1 : 1).map(em => `
+        <div class="email-entry">
+          <div class="email-head">
+            <span class="email-from">${(em.from||'(no sender)').replace(/</g,'&lt;')}</span>
+            <span class="email-date">${fmtDate(em.date)}</span>
+          </div>
+          <div class="email-subj">${(em.subject||'(no subject)').replace(/</g,'&lt;')}</div>
+          ${em.body ? `<div class="email-body">${em.body.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>')}</div>` : ''}
+        </div>`).join('');
+
+  // Build attachments list
+  const attachHtml = (job.attachments || []).length === 0
+    ? '<p class="empty">No other attachments.</p>'
+    : `<ul class="attach-list">${(job.attachments||[]).map(a =>
+        `<li><strong>${a.originalName.replace(/</g,'&lt;')}</strong> <span class="meta">${fmtSize(a.size)} &middot; added ${fmtDate(a.addedAt)}</span></li>`
+      ).join('')}</ul>`;
+
+  const safeTitle = `${job.title} — ${job.company}`.replace(/[<>"]/g, '');
+  const exportDate = new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>${safeTitle}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 11pt; color: #1a1a2e; background: #fff; line-height: 1.5; }
+
+  /* ── Page header ── */
+  .page-header { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 60%, #0f3460 100%); color: #fff; padding: 32px 40px 24px; }
+  .job-title   { font-size: 22pt; font-weight: 700; letter-spacing: -0.3px; margin-bottom: 4px; }
+  .job-company { font-size: 13pt; color: #94a3b8; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 16px; }
+  .meta-row    { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+  .status-badge { display: inline-block; padding: 4px 14px; border-radius: 20px; font-size: 9pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; background: ${statusColor}22; color: ${statusColor}; border: 1.5px solid ${statusColor}66; }
+  .meta-item   { font-size: 9.5pt; color: #94a3b8; }
+  .meta-item strong { color: #cbd5e1; }
+  .export-date { margin-left: auto; font-size: 8.5pt; color: #475569; }
+
+  /* ── Sections ── */
+  .content { padding: 0 40px 40px; }
+  .section { margin-top: 28px; }
+  .section-title {
+    font-size: 9pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px;
+    color: #6366f1; border-bottom: 2px solid #e0e7ff; padding-bottom: 6px; margin-bottom: 14px;
+  }
+
+  /* ── URL ── */
+  .url-link { font-size: 9.5pt; color: #4f46e5; word-break: break-all; }
+
+  /* ── Notes ── */
+  .note-entry  { border-left: 3px solid #6366f1; padding: 8px 12px; margin-bottom: 10px; background: #f8f7ff; border-radius: 0 6px 6px 0; }
+  .note-ts     { font-size: 8pt; color: #94a3b8; margin-bottom: 4px; }
+  .note-body   { font-size: 10pt; color: #1e293b; }
+
+  /* ── Emails ── */
+  .email-entry { border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; margin-bottom: 10px; }
+  .email-head  { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 3px; }
+  .email-from  { font-size: 10pt; font-weight: 600; color: #1e293b; }
+  .email-date  { font-size: 8.5pt; color: #94a3b8; }
+  .email-subj  { font-size: 9.5pt; color: #475569; font-style: italic; margin-bottom: 6px; }
+  .email-body  { font-size: 9pt; color: #64748b; border-top: 1px solid #f1f5f9; padding-top: 8px; margin-top: 6px; max-height: 200px; overflow: hidden; }
+
+  /* ── Resume / Cover Letter ── */
+  .doc-content { font-size: 10pt; color: #1e293b; line-height: 1.6; padding: 16px; border: 1px solid #e2e8f0; border-radius: 8px; background: #fafafa; }
+  .doc-content h1 { font-size: 14pt; margin: 0.4em 0 0.2em; }
+  .doc-content h2 { font-size: 12pt; margin: 0.4em 0 0.2em; }
+  .doc-content h3 { font-size: 11pt; margin: 0.3em 0 0.15em; }
+  .doc-content p  { margin: 0 0 0.3em; }
+  .doc-content ul, .doc-content ol { margin: 0.2em 0 0.4em 1.4em; }
+  .doc-content li { margin-bottom: 0.1em; }
+  .doc-content b, .doc-content strong { font-weight: 700; }
+  .doc-content i, .doc-content em     { font-style: italic; }
+  .doc-content u                      { text-decoration: underline; }
+
+  /* ── Screenshots ── */
+  .screenshots-grid { display: flex; flex-wrap: wrap; gap: 12px; }
+  .ss-wrap { border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; max-width: 48%; }
+  .ss-wrap img { width: 100%; height: auto; display: block; }
+
+  /* ── Attachments ── */
+  .attach-list { padding-left: 18px; }
+  .attach-list li { margin-bottom: 6px; font-size: 10pt; }
+  .attach-list .meta { color: #94a3b8; font-size: 8.5pt; }
+
+  /* ── Empty state ── */
+  .empty { color: #94a3b8; font-style: italic; font-size: 9.5pt; }
+
+  /* ── Page breaks ── */
+  .section { page-break-inside: avoid; }
+  .ss-wrap  { page-break-inside: avoid; }
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <div class="job-title">${safeTitle.split(' — ')[0]}</div>
+  <div class="job-company">${job.company.replace(/</g,'&lt;')}</div>
+  <div class="meta-row">
+    <span class="status-badge">${statusLabel}</span>
+    <span class="meta-item">Date Applied: <strong>${fmtDate(job.dateApplied)}</strong></span>
+    ${job.notes?.length ? `<span class="meta-item">Notes: <strong>${job.notes.length}</strong></span>` : ''}
+    ${job.emails?.length ? `<span class="meta-item">Emails: <strong>${job.emails.length}</strong></span>` : ''}
+    ${job.screenshots?.length ? `<span class="meta-item">Screenshots: <strong>${job.screenshots.length}</strong></span>` : ''}
+    <span class="export-date">Exported ${exportDate}</span>
+  </div>
+</div>
+
+<div class="content">
+
+  ${job.url ? `
+  <div class="section">
+    <div class="section-title">Job Listing URL</div>
+    <a class="url-link" href="${job.url.replace(/"/g,'&quot;')}">${job.url.replace(/</g,'&lt;')}</a>
+  </div>` : ''}
+
+  <div class="section">
+    <div class="section-title">Notes &amp; Updates</div>
+    ${notesHtml}
+  </div>
+
+  <div class="section">
+    <div class="section-title">Emails</div>
+    ${emailsHtml}
+  </div>
+
+  ${job.resume ? `
+  <div class="section">
+    <div class="section-title">Resume</div>
+    <div class="doc-content">${job.resume}</div>
+  </div>` : ''}
+
+  ${job.coverLetter ? `
+  <div class="section">
+    <div class="section-title">Cover Letter</div>
+    <div class="doc-content">${job.coverLetter}</div>
+  </div>` : ''}
+
+  ${screenshots ? `
+  <div class="section">
+    <div class="section-title">Screenshots</div>
+    <div class="screenshots-grid">${screenshots}</div>
+  </div>` : ''}
+
+  <div class="section">
+    <div class="section-title">Other Attachments</div>
+    ${attachHtml}
+  </div>
+
+</div>
+</body>
+</html>`;
+
+  let browser;
+  try {
+    browser = await puppeteer.launch({
+      headless: true,
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    });
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: 'networkidle0' });
+
+    const safeName = `${job.title} - ${job.company}`.replace(/[/\\?%*:|"<>]/g, '-');
+    const pdfBuffer = await page.pdf({
+      format:          'A4',
+      printBackground: true,
+      margin: { top: '0', bottom: '14mm', left: '0', right: '0' },
+      displayHeaderFooter: true,
+      headerTemplate: '<span></span>',
+      footerTemplate: `<div style="font-size:8px;color:#94a3b8;width:100%;text-align:center;padding:0 10mm;">
+        ${safeTitle} &nbsp;·&nbsp; <span class="pageNumber"></span> of <span class="totalPages"></span>
+      </div>`,
+    });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}.pdf"`);
+    res.send(pdfBuffer);
+    console.log(`[PDF Export] Generated: ${safeName}.pdf`);
+  } catch (err) {
+    console.error('[PDF Export] Failed:', err.message);
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (browser) await browser.close();
+  }
+});
+
 // GET /api/backup-status
 app.get('/api/backup-status', (req, res) => {
   const hasRolling = fs.existsSync(BACKUP_FILE);
