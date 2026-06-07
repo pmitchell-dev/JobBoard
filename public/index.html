@@ -431,6 +431,46 @@
     </div>
   </div>
 
+  <!-- ── Export PDF Options Modal ────────────────────────────────────────── -->
+  <div class="modal-overlay hidden" id="exportPdfModal" onclick="handleOverlayClick(event,'exportPdfModal')">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="exportPdfModalTitle">
+      <div class="modal-header">
+        <h2 id="exportPdfModalTitle" class="modal-title">Export PDF Options</h2>
+        <button class="modal-close-btn" onclick="closeExportPdfModal()" aria-label="Close">&#x2715;</button>
+      </div>
+      <div class="modal-body">
+        <p style="margin-bottom: 16px; font-size: 0.95rem; color: #475569;">Select the sections you want to include in the exported dossier:</p>
+        <div class="export-options-list" style="display: flex; flex-direction: column; gap: 10px;">
+          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.95rem;">
+            <input type="checkbox" id="exOptUrl" checked style="width: 16px; height: 16px;"> Job Listing URL
+          </label>
+          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.95rem;">
+            <input type="checkbox" id="exOptNotes" checked style="width: 16px; height: 16px;"> Notes & Updates
+          </label>
+          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.95rem;">
+            <input type="checkbox" id="exOptEmails" checked style="width: 16px; height: 16px;"> Emails
+          </label>
+          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.95rem;">
+            <input type="checkbox" id="exOptResume" checked style="width: 16px; height: 16px;"> Resume
+          </label>
+          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.95rem;">
+            <input type="checkbox" id="exOptCover" checked style="width: 16px; height: 16px;"> Cover Letter
+          </label>
+          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.95rem;">
+            <input type="checkbox" id="exOptScreenshots" checked style="width: 16px; height: 16px;"> Screenshots
+          </label>
+          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.95rem;">
+            <input type="checkbox" id="exOptAttachments" checked style="width: 16px; height: 16px;"> Other Attachments List
+          </label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeExportPdfModal()">Cancel</button>
+        <button class="btn-primary" id="confirmExportPdfBtn" onclick="confirmExportPdf()">Generate PDF</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ── Import Options Modal ────────────────────────────────────────── -->
   <div class="modal-overlay hidden" id="importModal" onclick="handleOverlayClick(event,'importModal')">
     <div class="modal modal-import" role="dialog" aria-modal="true" aria-labelledby="importModalTitle">

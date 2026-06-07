@@ -1341,23 +1341,38 @@ function fmtFileSize(bytes) {
   return (bytes / 1024 / 1024).toFixed(1) + ' MB';
 }
 
-// ── Job PDF Export ───────────────────────────────────────────────────────────
-async function exportJobPdf() {
+function exportJobPdf() {
   if (!activeJobId) return;
+  document.getElementById('exportPdfModal').classList.remove('hidden');
+}
+
+function closeExportPdfModal() {
+  document.getElementById('exportPdfModal').classList.add('hidden');
+}
+
+async function confirmExportPdf() {
   const job = jobs.find(j => j.id === activeJobId);
   if (!job) return;
 
-  const btn = document.getElementById('exportPdfBtn');
+  const btn = document.getElementById('confirmExportPdfBtn');
   const origHTML = btn.innerHTML;
   btn.disabled = true;
   btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Generating…';
 
+  const sections = [];
+  if (document.getElementById('exOptUrl').checked) sections.push('url');
+  if (document.getElementById('exOptNotes').checked) sections.push('notes');
+  if (document.getElementById('exOptEmails').checked) sections.push('emails');
+  if (document.getElementById('exOptResume').checked) sections.push('resume');
+  if (document.getElementById('exOptCover').checked) sections.push('cover');
+  if (document.getElementById('exOptScreenshots').checked) sections.push('screenshots');
+  if (document.getElementById('exOptAttachments').checked) sections.push('attachments');
+
   try {
-    const res = await fetch(`/api/jobs/${activeJobId}/export-pdf`);
+    const res = await fetch(`/api/jobs/${activeJobId}/export-pdf?sections=${sections.join(',')}`);
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || res.statusText);
 
-    // Create a temporary anchor to natively download the cached file
     const a = document.createElement('a');
     a.href = data.downloadUrl;
     a.download = data.filename;
@@ -1366,6 +1381,7 @@ async function exportJobPdf() {
     a.remove();
     
     toast('📄 PDF downloaded!', 'success');
+    closeExportPdfModal();
   } catch (err) {
     toast('PDF export failed: ' + err.message, 'error');
   } finally {

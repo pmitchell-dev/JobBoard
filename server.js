@@ -507,23 +507,26 @@ app.get('/api/jobs/:id/export-pdf', async (req, res) => {
   const statusLabel = STATUS_LABELS[job.status] || job.status;
   const statusColor = STATUS_COLORS[job.status] || '#6366f1';
 
+  const opts = req.query.sections ? req.query.sections.split(',') : ['url','notes','emails','resume','cover','screenshots','attachments'];
+  const wants = (opt) => opts.includes(opt);
+
   // Build screenshot img tags
-  const screenshots = (job.screenshots || []).map(s => {
+  const screenshots = wants('screenshots') ? (job.screenshots || []).map(s => {
     const uri = fileToDataUri(s.filename);
     return uri ? `<div class="ss-wrap"><img src="${uri}" alt="Screenshot" /></div>` : '';
-  }).filter(Boolean).join('');
+  }).filter(Boolean).join('') : '';
 
   // Build notes HTML
-  const notesHtml = (job.notes || []).length === 0
+  const notesHtml = wants('notes') ? ((job.notes || []).length === 0
     ? '<p class="empty">No notes recorded.</p>'
     : [...(job.notes || [])].reverse().map(n => `
         <div class="note-entry">
           <div class="note-ts">${fmtTs(n.timestamp)}</div>
           <div class="note-body">${n.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>')}</div>
-        </div>`).join('');
+        </div>`).join('')) : '';
 
   // Build emails HTML
-  const emailsHtml = (job.emails || []).length === 0
+  const emailsHtml = wants('emails') ? ((job.emails || []).length === 0
     ? '<p class="empty">No emails recorded.</p>'
     : [...(job.emails || [])].sort((a,b) => (b.date||b.addedAt) < (a.date||a.addedAt) ? -1 : 1).map(em => `
         <div class="email-entry">
@@ -533,14 +536,14 @@ app.get('/api/jobs/:id/export-pdf', async (req, res) => {
           </div>
           <div class="email-subj">${(em.subject||'(no subject)').replace(/</g,'&lt;')}</div>
           ${em.body ? `<div class="email-body">${em.body.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>')}</div>` : ''}
-        </div>`).join('');
+        </div>`).join('')) : '';
 
   // Build attachments list
-  const attachHtml = (job.attachments || []).length === 0
+  const attachHtml = wants('attachments') ? ((job.attachments || []).length === 0
     ? '<p class="empty">No other attachments.</p>'
     : `<ul class="attach-list">${(job.attachments||[]).map(a =>
         `<li><strong>${a.originalName.replace(/</g,'&lt;')}</strong> <span class="meta">${fmtSize(a.size)} &middot; added ${fmtDate(a.addedAt)}</span></li>`
-      ).join('')}</ul>`;
+      ).join('')}</ul>`) : '';
 
   const safeTitle = `${job.title} — ${job.company}`.replace(/[<>"]/g, '');
   const exportDate = new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
@@ -626,53 +629,56 @@ app.get('/api/jobs/:id/export-pdf', async (req, res) => {
   <div class="meta-row">
     <span class="status-badge">${statusLabel}</span>
     <span class="meta-item">Date Applied: <strong>${fmtDate(job.dateApplied)}</strong></span>
-    ${job.notes?.length ? `<span class="meta-item">Notes: <strong>${job.notes.length}</strong></span>` : ''}
-    ${job.emails?.length ? `<span class="meta-item">Emails: <strong>${job.emails.length}</strong></span>` : ''}
-    ${job.screenshots?.length ? `<span class="meta-item">Screenshots: <strong>${job.screenshots.length}</strong></span>` : ''}
+    ${job.notes?.length && wants('notes') ? `<span class="meta-item">Notes: <strong>${job.notes.length}</strong></span>` : ''}
+    ${job.emails?.length && wants('emails') ? `<span class="meta-item">Emails: <strong>${job.emails.length}</strong></span>` : ''}
+    ${job.screenshots?.length && wants('screenshots') ? `<span class="meta-item">Screenshots: <strong>${job.screenshots.length}</strong></span>` : ''}
     <span class="export-date">Exported ${exportDate}</span>
   </div>
 </div>
 
 <div class="content">
 
-  ${job.url ? `
+  ${job.url && wants('url') ? `
   <div class="section">
     <div class="section-title">Job Listing URL</div>
     <a class="url-link" href="${job.url.replace(/"/g,'&quot;')}">${job.url.replace(/</g,'&lt;')}</a>
   </div>` : ''}
 
+  ${wants('notes') ? `
   <div class="section">
     <div class="section-title">Notes &amp; Updates</div>
     ${notesHtml}
-  </div>
+  </div>` : ''}
 
+  ${wants('emails') ? `
   <div class="section">
     <div class="section-title">Emails</div>
     ${emailsHtml}
-  </div>
+  </div>` : ''}
 
-  ${job.resume ? `
+  ${job.resume && wants('resume') ? `
   <div class="section">
     <div class="section-title">Resume</div>
     <div class="doc-content">${job.resume}</div>
   </div>` : ''}
 
-  ${job.coverLetter ? `
+  ${job.coverLetter && wants('cover') ? `
   <div class="section">
     <div class="section-title">Cover Letter</div>
     <div class="doc-content">${job.coverLetter}</div>
   </div>` : ''}
 
-  ${screenshots ? `
+  ${screenshots && wants('screenshots') ? `
   <div class="section">
     <div class="section-title">Screenshots</div>
     <div class="screenshots-grid">${screenshots}</div>
   </div>` : ''}
 
+  ${wants('attachments') ? `
   <div class="section">
     <div class="section-title">Other Attachments</div>
     ${attachHtml}
-  </div>
+  </div>` : ''}
 
 </div>
 </body>
@@ -705,7 +711,11 @@ app.get('/api/jobs/:id/export-pdf', async (req, res) => {
     fs.writeFileSync(filepath, pdfBuffer);
 
     console.log(`[PDF Export] Generated: ${filename}`);
-    res.json({ success: true, downloadUrl: `/cache/${filename}`, filename: `${safeName}.pdf` });
+    res.json({ 
+      success: true, 
+      downloadUrl: `/api/download-cache?file=${filename}&name=${encodeURIComponent(safeName + '.pdf')}`, 
+      filename: `${safeName}.pdf` 
+    });
 
   } catch (err) {
     console.error('[PDF Export] Failed:', err.message);
@@ -715,7 +725,18 @@ app.get('/api/jobs/:id/export-pdf', async (req, res) => {
   }
 });
 
-// GET /cache/:filename  — serve cached files statically for export downloads
+// GET /api/download-cache  — serve cached files with strict Content-Disposition headers
+app.get('/api/download-cache', (req, res) => {
+  const { file, name } = req.query;
+  if (!file || !file.startsWith('export-')) return res.status(403).json({ error: 'Forbidden' });
+  
+  const filepath = path.join(CACHE_DIR, file);
+  if (!fs.existsSync(filepath)) return res.status(404).json({ error: 'File not found' });
+  
+  res.download(filepath, name || file);
+});
+
+// GET /cache/:filename  — serve cached files statically for other uses
 app.use('/cache', express.static(CACHE_DIR));
 
 // GET /api/backup-status
