@@ -19,3 +19,5 @@ services:
     # (we do use --no-sandbox, but this makes some Linux kernels happier)
     security_opt:
       - seccomp:unconfined
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

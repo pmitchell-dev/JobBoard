@@ -513,6 +513,9 @@ app.put('/api/settings', (req, res) => {
 function checkConnection(host, port) {
   return new Promise((resolve, reject) => {
     let cleanHost = host.trim();
+    if ((cleanHost === 'localhost' || cleanHost === '127.0.0.1') && fs.existsSync('/.dockerenv')) {
+      cleanHost = 'host.docker.internal';
+    }
     let isHttps = false;
     if (cleanHost.startsWith('https://')) {
       cleanHost = cleanHost.replace('https://', '');
@@ -586,7 +589,11 @@ app.post('/api/settings/verify', async (req, res) => {
 // Proxy to local Open WebUI container
 app.all('/api/chat-proxy/*', async (req, res) => {
   const targetPath = req.url.replace('/api/chat-proxy', '');
-  const targetUrl = `http://${settings.openWebUiHost}:${settings.openWebUiPort}${targetPath}`;
+  let host = settings.openWebUiHost;
+  if ((host === 'localhost' || host === '127.0.0.1') && fs.existsSync('/.dockerenv')) {
+    host = 'host.docker.internal';
+  }
+  const targetUrl = `http://${host}:${settings.openWebUiPort}${targetPath}`;
 
   try {
     const headers = {};
