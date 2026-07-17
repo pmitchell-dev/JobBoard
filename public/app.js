@@ -1843,12 +1843,78 @@ function toggleChatSettings() {
   }
 }
 
+function getCleanHost(host) {
+  let clean = host.trim().toLowerCase();
+  if (clean.startsWith('https://')) {
+    clean = clean.replace('https://', '');
+  } else if (clean.startsWith('http://')) {
+    clean = clean.replace('http://', '');
+  }
+  return clean.split('/')[0].split(':')[0];
+}
+
+function isLocalHostOrIp(host) {
+  const clean = getCleanHost(host);
+  if (!clean) return false;
+
+  if (clean === 'localhost' || clean === '127.0.0.1' || clean === '::1') {
+    return true;
+  }
+
+  if (clean.endsWith('.local') || clean.endsWith('.internal')) {
+    return true;
+  }
+
+  if (!clean.includes('.')) {
+    return true;
+  }
+
+  const ipv4Regex = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
+  const match = clean.match(ipv4Regex);
+  if (match) {
+    const o1 = parseInt(match[1], 10);
+    const o2 = parseInt(match[2], 10);
+    const o3 = parseInt(match[3], 10);
+    const o4 = parseInt(match[4], 10);
+
+    if (o1 > 255 || o2 > 255 || o3 > 255 || o4 > 255) return false;
+
+    if (o1 === 127) return true;
+    if (o1 === 10) return true;
+    if (o1 === 172 && (o2 >= 16 && o2 <= 31)) return true;
+    if (o1 === 192 && o2 === 168) return true;
+    if (o1 === 169 && o2 === 254) return true;
+  }
+
+  if (clean.startsWith('fc') || clean.startsWith('fd') || clean.startsWith('fe8') || clean.startsWith('fe9') || clean.startsWith('fea') || clean.startsWith('feb')) {
+    return true;
+  }
+
+  return false;
+}
+
 async function saveChatSettings() {
   const apiKey = document.getElementById('chatApiKey').value.trim();
   const model = document.getElementById('chatModelSelect').value;
   const systemPrompt = document.getElementById('chatSystemPrompt').value.trim();
-  const host = document.getElementById('chatHost').value.trim() || 'localhost';
-  const port = parseInt(document.getElementById('chatPort').value, 10) || 3002;
+  const hostInput = document.getElementById('chatHost').value.trim();
+  const portInput = document.getElementById('chatPort').value.trim();
+
+  if (!hostInput || !portInput) {
+    toast('Both Host/IP and Port are required.', 'error');
+    return;
+  }
+
+  if (!isLocalHostOrIp(hostInput)) {
+    toast('Host must be a local address (e.g. localhost, 127.0.0.1, or a private IP like 192.168.x.x).', 'error');
+    return;
+  }
+
+  const port = parseInt(portInput, 10);
+  if (isNaN(port) || port < 1 || port > 65535) {
+    toast('Port must be a valid number between 1 and 65535.', 'error');
+    return;
+  }
 
   localStorage.setItem('jobboard_chat_apikey', apiKey);
   localStorage.setItem('jobboard_chat_model', model);
@@ -1866,11 +1932,12 @@ async function saveChatSettings() {
     const res = await fetch('/api/settings', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ openWebUiHost: host, openWebUiPort: port })
+      body: JSON.stringify({ openWebUiHost: hostInput, openWebUiPort: port })
     });
     
     if (!res.ok) {
-      throw new Error('Failed to save backend settings');
+      const errData = await res.json();
+      throw new Error(errData.error || 'Failed to save backend settings');
     }
     
     const data = await res.json();
@@ -1897,11 +1964,39 @@ async function saveChatSettings() {
 }
 
 async function verifyConnection() {
-  const host = document.getElementById('chatHost').value.trim() || 'localhost';
-  const port = parseInt(document.getElementById('chatPort').value, 10) || 3002;
+  const hostInput = document.getElementById('chatHost').value.trim();
+  const portInput = document.getElementById('chatPort').value.trim();
   const resultEl = document.getElementById('verifyConnectionResult');
   const verifyBtn = document.getElementById('chatVerifyBtn');
   
+  if (!hostInput || !portInput) {
+    if (resultEl) {
+      resultEl.textContent = '✗ Both Host/IP and Port are required.';
+      resultEl.style.color = '#ef4444';
+    }
+    toast('Both Host/IP and Port are required.', 'error');
+    return;
+  }
+
+  if (!isLocalHostOrIp(hostInput)) {
+    if (resultEl) {
+      resultEl.textContent = '✗ Host must be a local address.';
+      resultEl.style.color = '#ef4444';
+    }
+    toast('Host must be a local address (e.g. localhost, 127.0.0.1, or a private IP like 192.168.x.x).', 'error');
+    return;
+  }
+
+  const port = parseInt(portInput, 10);
+  if (isNaN(port) || port < 1 || port > 65535) {
+    if (resultEl) {
+      resultEl.textContent = '✗ Port must be between 1 and 65535.';
+      resultEl.style.color = '#ef4444';
+    }
+    toast('Port must be a valid number between 1 and 65535.', 'error');
+    return;
+  }
+
   if (resultEl) {
     resultEl.textContent = 'Connecting...';
     resultEl.style.color = '#a5b4fc';
@@ -1914,7 +2009,7 @@ async function verifyConnection() {
     const response = await fetch('/api/settings/verify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ host, port })
+      body: JSON.stringify({ host: hostInput, port: port })
     });
     
     const data = await response.json();

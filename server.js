@@ -422,6 +422,63 @@ app.put('/api/notepad', (req, res) => {
 
 // ── Settings ───────────────────────────────────────────────────────────────
 
+function getCleanHost(host) {
+  let clean = host.trim().toLowerCase();
+  if (clean.startsWith('https://')) {
+    clean = clean.replace('https://', '');
+  } else if (clean.startsWith('http://')) {
+    clean = clean.replace('http://', '');
+  }
+  return clean.split('/')[0].split(':')[0];
+}
+
+function isLocalHostOrIp(host) {
+  const clean = getCleanHost(host);
+  if (!clean) return false;
+
+  if (clean === 'localhost' || clean === '127.0.0.1' || clean === '::1') {
+    return true;
+  }
+
+  if (clean.endsWith('.local') || clean.endsWith('.internal')) {
+    return true;
+  }
+
+  if (!clean.includes('.')) {
+    return true; // simple hostname (local machine)
+  }
+
+  // IPv4 Private networks regex matches
+  const ipv4Regex = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
+  const match = clean.match(ipv4Regex);
+  if (match) {
+    const o1 = parseInt(match[1], 10);
+    const o2 = parseInt(match[2], 10);
+    const o3 = parseInt(match[3], 10);
+    const o4 = parseInt(match[4], 10);
+
+    if (o1 > 255 || o2 > 255 || o3 > 255 || o4 > 255) return false;
+
+    // 127.0.0.0/8 (Loopback)
+    if (o1 === 127) return true;
+    // 10.0.0.0/8 (Class A Private)
+    if (o1 === 10) return true;
+    // 172.16.0.0/12 (Class B Private)
+    if (o1 === 172 && (o2 >= 16 && o2 <= 31)) return true;
+    // 192.168.0.0/16 (Class C Private)
+    if (o1 === 192 && o2 === 168) return true;
+    // 169.254.0.0/16 (Link-local)
+    if (o1 === 169 && o2 === 254) return true;
+  }
+
+  // IPv6 local/private starts: ULA fc00::/7 (fc, fd) or Link-local fe80::/10 (fe8, fe9, fea, feb)
+  if (clean.startsWith('fc') || clean.startsWith('fd') || clean.startsWith('fe8') || clean.startsWith('fe9') || clean.startsWith('fea') || clean.startsWith('feb')) {
+    return true;
+  }
+
+  return false;
+}
+
 app.get('/api/settings', (req, res) => {
   res.json(settings);
 });
@@ -429,10 +486,21 @@ app.get('/api/settings', (req, res) => {
 app.put('/api/settings', (req, res) => {
   const { openWebUiHost, openWebUiPort } = req.body;
   if (!openWebUiHost || !openWebUiPort) {
-    return res.status(400).json({ error: 'openWebUiHost and openWebUiPort are required.' });
+    return res.status(400).json({ error: 'Both Host/IP and Port are required.' });
   }
+
+  const cleanHost = getCleanHost(openWebUiHost);
+  if (!isLocalHostOrIp(cleanHost)) {
+    return res.status(400).json({ error: 'Host must be a local address (e.g. localhost, 127.0.0.1, or a private IP like 192.168.x.x).' });
+  }
+
+  const portVal = parseInt(openWebUiPort, 10);
+  if (isNaN(portVal) || portVal < 1 || portVal > 65535) {
+    return res.status(400).json({ error: 'Port must be a valid number between 1 and 65535.' });
+  }
+
   settings.openWebUiHost = openWebUiHost.trim();
-  settings.openWebUiPort = parseInt(openWebUiPort, 10);
+  settings.openWebUiPort = portVal;
   
   try {
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
@@ -492,11 +560,21 @@ function checkConnection(host, port) {
 app.post('/api/settings/verify', async (req, res) => {
   const { host, port } = req.body;
   if (!host || !port) {
-    return res.status(400).json({ success: false, error: 'Host and port are required.' });
+    return res.status(400).json({ success: false, error: 'Both Host/IP and Port are required.' });
+  }
+
+  const cleanHost = getCleanHost(host);
+  if (!isLocalHostOrIp(cleanHost)) {
+    return res.status(400).json({ success: false, error: 'Host must be a local address (e.g. localhost, 127.0.0.1, or a private IP like 192.168.x.x).' });
+  }
+
+  const portVal = parseInt(port, 10);
+  if (isNaN(portVal) || portVal < 1 || portVal > 65535) {
+    return res.status(400).json({ success: false, error: 'Port must be a valid number between 1 and 65535.' });
   }
   
   try {
-    const result = await checkConnection(host, port);
+    const result = await checkConnection(host, portVal);
     res.json(result);
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
