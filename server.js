@@ -6,6 +6,7 @@ const puppeteer = require('puppeteer');
 const { ZipArchive } = require('archiver');
 const unzipper = require('unzipper');
 const multer  = require('multer');
+const fetch = require('node-fetch');
 
 const app = express();
 const PORT = 3000;
@@ -392,6 +393,50 @@ app.put('/api/notepad', (req, res) => {
     res.json(payload);
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Chat Proxy ───────────────────────────────────────────────────────────────
+
+// Proxy to local Open WebUI container at http://localhost:3002
+app.all('/api/chat-proxy/*', async (req, res) => {
+  const targetPath = req.url.replace('/api/chat-proxy', '');
+  const targetUrl = `http://localhost:3002${targetPath}`;
+
+  try {
+    const headers = {};
+    const allowedHeaders = ['authorization', 'content-type', 'accept'];
+    for (const h of allowedHeaders) {
+      if (req.headers[h]) {
+        headers[h] = req.headers[h];
+      }
+    }
+
+    const fetchOpts = {
+      method: req.method,
+      headers: headers,
+    };
+
+    if (['POST', 'PUT', 'PATCH'].includes(req.method)) {
+      fetchOpts.body = JSON.stringify(req.body);
+    }
+
+    const response = await fetch(targetUrl, fetchOpts);
+
+    res.status(response.status);
+    if (response.headers.get('content-type')) {
+      res.setHeader('content-type', response.headers.get('content-type'));
+    }
+
+    if (response.body && typeof response.body.pipe === 'function') {
+      response.body.pipe(res);
+    } else {
+      const buffer = await response.buffer();
+      res.send(buffer);
+    }
+  } catch (err) {
+    console.error('[Chat Proxy] Failed:', err.message);
+    res.status(500).json({ error: `Could not connect to Open WebUI container. Is it running on port 3002?` });
   }
 });
 

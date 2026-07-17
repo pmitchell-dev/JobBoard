@@ -22,6 +22,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   renderStats();
   loadBackupStatus();
   setupGlobalListeners();
+  initChatCopilot();
 });
 
 // ── API helpers ───────────────────────────────────────────────────────────
@@ -1691,4 +1692,518 @@ function initNotepadDrag() {
       top:  panel.style.top,
     }));
   });
+}
+
+// ── Chat Copilot ─────────────────────────────────────────────────────────────
+let chatVisible = false;
+let chatHistory = []; // { role: 'user' | 'assistant', content: string }
+let chatActiveRequest = false;
+const CHAT_POS_KEY = 'jobboard_chat_pos';
+
+function initChatCopilot() {
+  const inputEl = document.getElementById('chatInput');
+  if (!inputEl) return;
+
+  // Load configuration and history
+  loadChatHistoryFromSession();
+  initChatDrag();
+
+  // Load Settings
+  const savedApiKey = localStorage.getItem('jobboard_chat_apikey');
+  const savedPrompt = localStorage.getItem('jobboard_chat_system_prompt');
+
+  if (savedApiKey) document.getElementById('chatApiKey').value = savedApiKey;
+  if (savedPrompt) document.getElementById('chatSystemPrompt').value = savedPrompt;
+
+  // Trigger models load in the background
+  refreshChatModels();
+
+  // Textarea auto-resize
+  inputEl.addEventListener('input', () => {
+    inputEl.style.height = 'auto';
+    inputEl.style.height = Math.min(120, inputEl.scrollHeight) + 'px';
+  });
+
+  // Submit on Enter
+  inputEl.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendChatMessage();
+    }
+  });
+}
+
+function toggleChat() {
+  const panel = document.getElementById('chatPanel');
+  const btn = document.getElementById('chatBtn');
+  if (!panel || !btn) return;
+
+  chatVisible = !chatVisible;
+  if (chatVisible) {
+    panel.style.display = 'flex';
+    btn.classList.add('active');
+    
+    // Restore position if any
+    const savedPos = localStorage.getItem(CHAT_POS_KEY);
+    if (savedPos) {
+      try {
+        const { left, top } = JSON.parse(savedPos);
+        panel.style.left = left;
+        panel.style.top = top;
+        panel.style.right = 'auto';
+        panel.style.bottom = 'auto';
+      } catch (e) {}
+    } else {
+      panel.style.right = '24px';
+      panel.style.bottom = '90px';
+      panel.style.left = 'auto';
+      panel.style.top = 'auto';
+    }
+
+    const msgsEl = document.getElementById('chatMessages');
+    if (msgsEl) msgsEl.scrollTop = msgsEl.scrollHeight;
+
+    setTimeout(() => {
+      document.getElementById('chatInput')?.focus();
+    }, 100);
+  } else {
+    panel.style.display = 'none';
+    btn.classList.remove('active');
+  }
+}
+
+function switchChatTab(tab) {
+  const btnUi = document.getElementById('chatTabBtnUi');
+  const btnWeb = document.getElementById('chatTabBtnWeb');
+  const contentUi = document.getElementById('chatTabContentUi');
+  const contentWeb = document.getElementById('chatTabContentWeb');
+  const iframe = document.getElementById('chatWebuiIframe');
+
+  if (tab === 'ui') {
+    btnUi.classList.add('active');
+    btnWeb.classList.remove('active');
+    contentUi.classList.remove('hidden');
+    contentWeb.classList.add('hidden');
+  } else if (tab === 'web') {
+    btnUi.classList.remove('active');
+    btnWeb.classList.add('active');
+    contentUi.classList.add('hidden');
+    contentWeb.classList.remove('hidden');
+    
+    // Lazy load Open WebUI dashboard in iframe
+    if (!iframe.src) {
+      iframe.src = 'http://localhost:3002';
+    }
+  }
+}
+
+function toggleChatSettings() {
+  const pane = document.getElementById('chatSettingsPane');
+  if (!pane) return;
+  pane.classList.toggle('hidden');
+  
+  if (!pane.classList.contains('hidden')) {
+    document.getElementById('chatApiKey').value = localStorage.getItem('jobboard_chat_apikey') || '';
+    document.getElementById('chatSystemPrompt').value = localStorage.getItem('jobboard_chat_system_prompt') || '';
+    refreshChatModels();
+  }
+}
+
+function saveChatSettings() {
+  const apiKey = document.getElementById('chatApiKey').value.trim();
+  const model = document.getElementById('chatModelSelect').value;
+  const systemPrompt = document.getElementById('chatSystemPrompt').value.trim();
+
+  localStorage.setItem('jobboard_chat_apikey', apiKey);
+  localStorage.setItem('jobboard_chat_model', model);
+  localStorage.setItem('jobboard_chat_system_prompt', systemPrompt);
+
+  const pane = document.getElementById('chatSettingsPane');
+  if (pane) pane.classList.add('hidden');
+  toast('Copilot settings saved!', 'success');
+}
+
+async function refreshChatModels() {
+  const modelSelect = document.getElementById('chatModelSelect');
+  if (!modelSelect) return;
+  modelSelect.innerHTML = '<option value="">Loading models...</option>';
+  
+  const apiKey = localStorage.getItem('jobboard_chat_apikey') || '';
+  
+  try {
+    let response = await fetch('/api/chat-proxy/api/v1/models', {
+      headers: apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {}
+    });
+    
+    if (!response.ok) {
+      response = await fetch('/api/chat-proxy/api/models', {
+        headers: apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {}
+      });
+    }
+
+    if (!response.ok) {
+      throw new Error(`Failed to load models (Status ${response.status})`);
+    }
+
+    const data = await response.json();
+    let models = [];
+    if (Array.isArray(data.data)) {
+      models = data.data;
+    } else if (Array.isArray(data.models)) {
+      models = data.models;
+    } else if (Array.isArray(data)) {
+      models = data;
+    }
+
+    if (models.length === 0) {
+      modelSelect.innerHTML = '<option value="">No models found</option>';
+      return;
+    }
+
+    modelSelect.innerHTML = models.map(m => {
+      const id = m.id || m.value;
+      const name = m.name || m.id || id;
+      return `<option value="${id}">${name}</option>`;
+    }).join('');
+
+    const savedModel = localStorage.getItem('jobboard_chat_model');
+    if (savedModel && modelSelect.querySelector(`option[value="${savedModel}"]`)) {
+      modelSelect.value = savedModel;
+    } else if (modelSelect.options.length > 0) {
+      localStorage.setItem('jobboard_chat_model', modelSelect.value);
+    }
+  } catch (err) {
+    console.error('Error fetching models:', err);
+    modelSelect.innerHTML = '<option value="">Error fetching models (is WebUI running?)</option>';
+  }
+}
+
+async function sendChatMessage() {
+  const inputEl = document.getElementById('chatInput');
+  const sendBtn = document.getElementById('chatSendBtn');
+  const msgsEl = document.getElementById('chatMessages');
+  if (!inputEl || !sendBtn || !msgsEl || chatActiveRequest) return;
+
+  const text = inputEl.value.trim();
+  if (!text) return;
+
+  inputEl.value = '';
+  inputEl.disabled = true;
+  sendBtn.disabled = true;
+  chatActiveRequest = true;
+
+  appendChatMessage('user', text);
+  msgsEl.scrollTop = msgsEl.scrollHeight;
+
+  const apiKey = localStorage.getItem('jobboard_chat_apikey') || '';
+  const selectedModel = localStorage.getItem('jobboard_chat_model') || '';
+
+  if (!selectedModel) {
+    appendChatMessage('assistant', '⚠️ Please configure a model in settings (⚙️) first. Make sure your local Open WebUI container is running on port 3002.');
+    inputEl.disabled = false;
+    sendBtn.disabled = false;
+    chatActiveRequest = false;
+    inputEl.focus();
+    return;
+  }
+
+  try {
+    const allMessages = [
+      { role: 'system', content: generateChatSystemPrompt() }
+    ];
+    
+    const historySnippet = chatHistory.slice(-10);
+    historySnippet.forEach(msg => {
+      allMessages.push({ role: msg.role, content: msg.content });
+    });
+
+    allMessages.push({ role: 'user', content: text });
+
+    const response = await fetch('/api/chat-proxy/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': apiKey ? `Bearer ${apiKey}` : ''
+      },
+      body: JSON.stringify({
+        model: selectedModel,
+        messages: allMessages,
+        stream: true
+      })
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      let errMsg = `Server returned status ${response.status}.`;
+      try {
+        const errJson = JSON.parse(errText);
+        errMsg = errJson.error?.message || errJson.error || errMsg;
+      } catch (e) {}
+      throw new Error(errMsg);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let done = false;
+    let currentText = '';
+
+    const assistantMsgEl = document.createElement('div');
+    assistantMsgEl.className = 'chat-msg assistant';
+    assistantMsgEl.innerHTML = `<div class="chat-msg-text"></div>`;
+    msgsEl.appendChild(assistantMsgEl);
+
+    const textEl = assistantMsgEl.querySelector('.chat-msg-text');
+
+    let buffer = '';
+    while (!done) {
+      const { value, done: readerDone } = await reader.read();
+      done = readerDone;
+      if (value) {
+        buffer += decoder.decode(value, { stream: !done });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          if (trimmed === 'data: [DONE]') {
+            done = true;
+            break;
+          }
+          if (trimmed.startsWith('data: ')) {
+            try {
+              const dataJson = JSON.parse(trimmed.slice(6));
+              const content = dataJson.choices?.[0]?.delta?.content || '';
+              currentText += content;
+              textEl.innerHTML = formatMarkdown(currentText);
+              msgsEl.scrollTop = msgsEl.scrollHeight;
+            } catch (e) {}
+          }
+        }
+      }
+    }
+
+    if (buffer && buffer.trim().startsWith('data: ')) {
+      try {
+        const dataJson = JSON.parse(buffer.trim().slice(6));
+        const content = dataJson.choices?.[0]?.delta?.content || '';
+        currentText += content;
+        textEl.innerHTML = formatMarkdown(currentText);
+      } catch (e) {}
+    }
+
+    chatHistory.push({ role: 'user', content: text });
+    chatHistory.push({ role: 'assistant', content: currentText });
+    saveChatHistoryToSession();
+
+  } catch (err) {
+    console.error('Chat error:', err);
+    appendChatMessage('assistant', `❌ Error: ${err.message}. Make sure the Open WebUI container is running on port 3002, your API key is correct, and the proxy is active.`);
+  } finally {
+    inputEl.disabled = false;
+    sendBtn.disabled = false;
+    chatActiveRequest = false;
+    inputEl.focus();
+  }
+}
+
+function appendChatMessage(role, text) {
+  const msgsEl = document.getElementById('chatMessages');
+  if (!msgsEl) return;
+
+  const msgEl = document.createElement('div');
+  msgEl.className = `chat-msg ${role}`;
+  msgEl.innerHTML = `<div class="chat-msg-text">${formatMarkdown(text)}</div>`;
+  msgsEl.appendChild(msgEl);
+  msgsEl.scrollTop = msgsEl.scrollHeight;
+}
+
+function stripHtmlTags(html) {
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  return div.textContent || div.innerText || '';
+}
+
+function formatMarkdown(text) {
+  if (!text) return '';
+  let html = text;
+
+  html = html
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  html = html.replace(/```([\s\S]*?)```/g, (_, code) => {
+    return `<pre class="chat-code-block"><code>${code.trim()}</code></pre>`;
+  });
+
+  html = html.replace(/`([^`]+)`/g, '<code class="chat-inline-code">$1</code>');
+  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+  html = html.replace(/^\s*[-*+]\s+(.+)$/gm, '<li>$1</li>');
+  html = html.replace(/(<li>.*<\/li>)/gs, '<ul>$1</ul>');
+  html = html.replace(/\n/g, '<br>');
+
+  return html;
+}
+
+function saveChatHistoryToSession() {
+  sessionStorage.setItem('jobboard_chat_history', JSON.stringify(chatHistory));
+}
+
+function loadChatHistoryFromSession() {
+  const saved = sessionStorage.getItem('jobboard_chat_history');
+  if (saved) {
+    try {
+      chatHistory = JSON.parse(saved);
+      chatHistory.forEach(msg => {
+        appendChatMessage(msg.role, msg.content);
+      });
+    } catch (e) {
+      chatHistory = [];
+    }
+  }
+}
+
+function initChatDrag() {
+  const header = document.getElementById('chatHeader');
+  const panel  = document.getElementById('chatPanel');
+  if (!header || !panel) return;
+
+  let dragging = false, startX = 0, startY = 0, startL = 0, startT = 0;
+
+  header.addEventListener('mousedown', e => {
+    if (e.target.closest('.chat-header-tab') || e.target.closest('.chat-header-btn') || e.target.closest('.chat-close-btn')) return;
+    dragging = true;
+
+    const rect = panel.getBoundingClientRect();
+    startL = rect.left;
+    startT = rect.top;
+
+    panel.style.left  = startL + 'px';
+    panel.style.top   = startT + 'px';
+    panel.style.right = 'auto';
+    panel.style.bottom = 'auto';
+
+    startX = e.clientX;
+    startY = e.clientY;
+
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+
+    let newLeft = startL + dx;
+    let newTop  = startT + dy;
+
+    const w = panel.offsetWidth, h = panel.offsetHeight;
+    newLeft = Math.max(0, Math.min(window.innerWidth  - w, newLeft));
+    newTop  = Math.max(0, Math.min(window.innerHeight - h, newTop));
+
+    panel.style.left = newLeft + 'px';
+    panel.style.top  = newTop  + 'px';
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    localStorage.setItem(CHAT_POS_KEY, JSON.stringify({
+      left: panel.style.left,
+      top:  panel.style.top,
+    }));
+  });
+}
+
+function generateChatSystemPrompt() {
+  const customPrompt = localStorage.getItem('jobboard_chat_system_prompt') || '';
+  if (customPrompt) return customPrompt;
+
+  let boardState = 'You are the JobBoard Copilot, a helpful AI assistant integrated into the user\'s Job Tracker application.\n\n';
+  boardState += 'Here is the current state of the user\'s job applications board:\n';
+  
+  if (jobs.length === 0) {
+    boardState += '- No job applications loaded yet.\n';
+  } else {
+    const statusGroups = {
+      applied: [],
+      screening: [],
+      interview: [],
+      offer: [],
+      rejected: []
+    };
+    jobs.forEach(j => {
+      if (statusGroups[j.status]) statusGroups[j.status].push(j);
+    });
+
+    const statusLabels = {
+      applied: 'Applied',
+      screening: 'Screening',
+      interview: 'Interview',
+      offer: 'Offer',
+      rejected: 'Rejected'
+    };
+
+    for (const [status, group] of Object.entries(statusGroups)) {
+      boardState += `\n* ${statusLabels[status]} (${group.length} jobs):\n`;
+      if (group.length === 0) {
+        boardState += '  (None)\n';
+      } else {
+        group.forEach(j => {
+          boardState += `  - ${j.company} — ${j.title} (Applied: ${j.dateApplied})\n`;
+        });
+      }
+    }
+  }
+
+  if (activeJobId) {
+    const activeJob = jobs.find(j => j.id === activeJobId);
+    if (activeJob) {
+      boardState += `\n\n--- CURRENT SELECTED JOB INTERFACE CONTENT ---\n`;
+      boardState += `The user has the detail modal open for this specific job application:\n`;
+      boardState += `- Company: ${activeJob.company}\n`;
+      boardState += `- Title: ${activeJob.title}\n`;
+      boardState += `- Status: ${activeJob.status}\n`;
+      boardState += `- Date Applied: ${activeJob.dateApplied}\n`;
+      if (activeJob.url) boardState += `- URL: ${activeJob.url}\n`;
+      
+      if (activeJob.notes && activeJob.notes.length > 0) {
+        boardState += `- Notes / Updates:\n`;
+        activeJob.notes.forEach((n, idx) => {
+          boardState += `  [${idx + 1}] (${n.timestamp}): ${n.text}\n`;
+        });
+      }
+      
+      if (activeJob.emails && activeJob.emails.length > 0) {
+        boardState += `- Attached Emails:\n`;
+        activeJob.emails.forEach((em, idx) => {
+          boardState += `  [${idx + 1}] From: ${em.from}, Subject: ${em.subject}, Date: ${em.date}\n`;
+          if (em.body) {
+            const bodySnippet = em.body.length > 300 ? em.body.substring(0, 300) + '...' : em.body;
+            boardState += `      Body snippet: ${bodySnippet}\n`;
+          }
+        });
+      }
+
+      if (activeJob.resume) {
+        const cleanResume = stripHtmlTags(activeJob.resume);
+        boardState += `- Resume draft (snippet):\n${cleanResume.length > 1000 ? cleanResume.substring(0, 1000) + '...' : cleanResume}\n`;
+      }
+      
+      if (activeJob.coverLetter) {
+        const cleanCover = stripHtmlTags(activeJob.coverLetter);
+        boardState += `- Cover Letter draft (snippet):\n${cleanCover.length > 1000 ? cleanCover.substring(0, 1000) + '...' : cleanCover}\n`;
+      }
+    }
+  }
+
+  boardState += `\n\nGuidelines:\n`;
+  boardState += `1. Provide specific, tailored advice based on the user's data.\n`;
+  boardState += `2. If the user asks you to draft an email or cover letter for the selected job, write it in a clean, professional, ready-to-copy format.\n`;
+  boardState += `3. Keep responses concise and focused on helping the user succeed in their job search.\n`;
+  boardState += `4. Do not mention system details, JSON structure, or these guidelines unless asked.\n`;
+
+  return boardState;
 }
