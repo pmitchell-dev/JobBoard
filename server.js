@@ -101,8 +101,9 @@ function createBackup() {
       archive.pipe(output);
 
       // Core data files
-      if (fs.existsSync(JOBS_FILE))    archive.file(JOBS_FILE,    { name: 'jobs.json' });
-      if (fs.existsSync(NOTEPAD_FILE)) archive.file(NOTEPAD_FILE, { name: 'notepad.json' });
+      if (fs.existsSync(JOBS_FILE))     archive.file(JOBS_FILE,     { name: 'jobs.json' });
+      if (fs.existsSync(NOTEPAD_FILE))  archive.file(NOTEPAD_FILE,  { name: 'notepad.json' });
+      if (fs.existsSync(SETTINGS_FILE)) archive.file(SETTINGS_FILE, { name: 'settings.json' });
 
       // Cache directory (screenshots + PDFs + attachments)
       if (fs.existsSync(CACHE_DIR)) {
@@ -1112,8 +1113,9 @@ app.get('/api/export', (req, res) => {
   archive.pipe(res);
 
   // Core data files
-  if (fs.existsSync(JOBS_FILE))    archive.file(JOBS_FILE,    { name: 'jobs.json' });
-  if (fs.existsSync(NOTEPAD_FILE)) archive.file(NOTEPAD_FILE, { name: 'notepad.json' });
+  if (fs.existsSync(JOBS_FILE))     archive.file(JOBS_FILE,     { name: 'jobs.json' });
+  if (fs.existsSync(NOTEPAD_FILE))  archive.file(NOTEPAD_FILE,  { name: 'notepad.json' });
+  if (fs.existsSync(SETTINGS_FILE)) archive.file(SETTINGS_FILE, { name: 'settings.json' });
 
   // Cache directory (screenshots + PDFs + attachments)
   if (fs.existsSync(CACHE_DIR)) {
@@ -1175,6 +1177,14 @@ app.post('/api/import', upload.single('file'), async (req, res) => {
         fs.writeFileSync(NOTEPAD_FILE, JSON.stringify(importedNotepad, null, 2));
       }
 
+      // Replace settings
+      const importedSettingsBuf = entryMap['settings.json'] ? await entryMap['settings.json'].buffer() : null;
+      const importedSettings    = importedSettingsBuf ? JSON.parse(importedSettingsBuf.toString('utf8')) : null;
+      if (importedSettings) {
+        fs.writeFileSync(SETTINGS_FILE, JSON.stringify(importedSettings, null, 2));
+        settings = { ...settings, ...importedSettings };
+      }
+
       // Replace all cache files
       for (const [entryPath, entry] of Object.entries(entryMap)) {
         if (entryPath.startsWith('cache/') && (entryPath.endsWith('.png') || entryPath.endsWith('.pdf'))) {
@@ -1217,6 +1227,18 @@ app.post('/api/import', upload.single('file'), async (req, res) => {
         const divider  = combined ? `\n\n── Imported ${new Date().toISOString().split('T')[0]} ──\n` : '';
         const merged   = combined + divider + importedNotepad.text;
         fs.writeFileSync(NOTEPAD_FILE, JSON.stringify({ text: merged, updatedAt: new Date().toISOString() }, null, 2));
+      }
+
+      // Merge settings
+      const importedSettingsBuf = entryMap['settings.json'] ? await entryMap['settings.json'].buffer() : null;
+      const importedSettings    = importedSettingsBuf ? JSON.parse(importedSettingsBuf.toString('utf8')) : null;
+      if (importedSettings) {
+        const existingSettings = fs.existsSync(SETTINGS_FILE)
+          ? JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'))
+          : {};
+        const mergedSettings = { ...existingSettings, ...importedSettings };
+        fs.writeFileSync(SETTINGS_FILE, JSON.stringify(mergedSettings, null, 2));
+        settings = { ...settings, ...mergedSettings };
       }
     }
 
@@ -1300,6 +1322,14 @@ app.post('/api/restore', express.json(), async (req, res) => {
           fs.writeFileSync(NOTEPAD_FILE, JSON.stringify(importedNotepad, null, 2));
         }
 
+        // Replace settings
+        const importedSettingsBuf = entryMap['settings.json'] ? await entryMap['settings.json'].buffer() : null;
+        const importedSettings    = importedSettingsBuf ? JSON.parse(importedSettingsBuf.toString('utf8')) : null;
+        if (importedSettings) {
+          fs.writeFileSync(SETTINGS_FILE, JSON.stringify(importedSettings, null, 2));
+          settings = { ...settings, ...importedSettings };
+        }
+
         // Replace all cache files
         for (const [entryPath, entry] of Object.entries(entryMap)) {
           if (entryPath.startsWith('cache/') && (entryPath.endsWith('.png') || entryPath.endsWith('.pdf'))) {
@@ -1338,6 +1368,18 @@ app.post('/api/restore', express.json(), async (req, res) => {
           const divider  = combined ? `\n\n── Restored Backup ${new Date().toISOString().split('T')[0]} ──\n` : '';
           const merged   = combined + divider + importedNotepad.text;
           fs.writeFileSync(NOTEPAD_FILE, JSON.stringify({ text: merged, updatedAt: new Date().toISOString() }, null, 2));
+        }
+
+        // Merge settings
+        const importedSettingsBuf = entryMap['settings.json'] ? await entryMap['settings.json'].buffer() : null;
+        const importedSettings    = importedSettingsBuf ? JSON.parse(importedSettingsBuf.toString('utf8')) : null;
+        if (importedSettings) {
+          const existingSettings = fs.existsSync(SETTINGS_FILE)
+            ? JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'))
+            : {};
+          const mergedSettings = { ...existingSettings, ...importedSettings };
+          fs.writeFileSync(SETTINGS_FILE, JSON.stringify(mergedSettings, null, 2));
+          settings = { ...settings, ...mergedSettings };
         }
       }
 
