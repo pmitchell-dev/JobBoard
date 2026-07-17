@@ -1700,6 +1700,8 @@ let chatVisible = false;
 let chatHistory = []; // { role: 'user' | 'assistant', content: string }
 let chatActiveRequest = false;
 const CHAT_POS_KEY = 'jobboard_chat_pos';
+let openWebUiHost = 'localhost';
+let openWebUiPort = 3002;
 
 function initChatCopilot() {
   const inputEl = document.getElementById('chatInput');
@@ -1716,8 +1718,25 @@ function initChatCopilot() {
   if (savedApiKey) document.getElementById('chatApiKey').value = savedApiKey;
   if (savedPrompt) document.getElementById('chatSystemPrompt').value = savedPrompt;
 
-  // Trigger models load in the background
-  refreshChatModels();
+  // Load Host / Port from backend settings
+  fetch('/api/settings')
+    .then(r => r.json())
+    .then(data => {
+      openWebUiHost = data.openWebUiHost || 'localhost';
+      openWebUiPort = data.openWebUiPort || 3002;
+      
+      const hostEl = document.getElementById('chatHost');
+      const portEl = document.getElementById('chatPort');
+      if (hostEl) hostEl.value = openWebUiHost;
+      if (portEl) portEl.value = openWebUiPort;
+      
+      // Trigger models load after settings are loaded
+      refreshChatModels();
+    })
+    .catch(err => {
+      console.warn('Failed to load Open WebUI settings:', err);
+      refreshChatModels();
+    });
 
   // Textarea auto-resize
   inputEl.addEventListener('input', () => {
@@ -1793,7 +1812,7 @@ function switchChatTab(tab) {
     
     // Lazy load Open WebUI dashboard in iframe
     if (!iframe.src) {
-      iframe.src = 'http://localhost:3002';
+      iframe.src = `http://${openWebUiHost}:${openWebUiPort}`;
     }
   }
 }
@@ -1806,22 +1825,119 @@ function toggleChatSettings() {
   if (!pane.classList.contains('hidden')) {
     document.getElementById('chatApiKey').value = localStorage.getItem('jobboard_chat_apikey') || '';
     document.getElementById('chatSystemPrompt').value = localStorage.getItem('jobboard_chat_system_prompt') || '';
+    
+    // Clear any previous verify connection result
+    const resultEl = document.getElementById('verifyConnectionResult');
+    if (resultEl) {
+      resultEl.textContent = '';
+      resultEl.style.color = '';
+    }
+    
+    // Populate host/port
+    const hostEl = document.getElementById('chatHost');
+    const portEl = document.getElementById('chatPort');
+    if (hostEl) hostEl.value = openWebUiHost;
+    if (portEl) portEl.value = openWebUiPort;
+    
     refreshChatModels();
   }
 }
 
-function saveChatSettings() {
+async function saveChatSettings() {
   const apiKey = document.getElementById('chatApiKey').value.trim();
   const model = document.getElementById('chatModelSelect').value;
   const systemPrompt = document.getElementById('chatSystemPrompt').value.trim();
+  const host = document.getElementById('chatHost').value.trim() || 'localhost';
+  const port = parseInt(document.getElementById('chatPort').value, 10) || 3002;
 
   localStorage.setItem('jobboard_chat_apikey', apiKey);
   localStorage.setItem('jobboard_chat_model', model);
   localStorage.setItem('jobboard_chat_system_prompt', systemPrompt);
 
-  const pane = document.getElementById('chatSettingsPane');
-  if (pane) pane.classList.add('hidden');
-  toast('Copilot settings saved!', 'success');
+  const saveBtn = document.querySelector('#chatSettingsPane .btn-primary');
+  const originalText = saveBtn ? saveBtn.textContent : 'Save Settings';
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving...';
+  }
+
+  try {
+    // Save host/port to backend
+    const res = await fetch('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ openWebUiHost: host, openWebUiPort: port })
+    });
+    
+    if (!res.ok) {
+      throw new Error('Failed to save backend settings');
+    }
+    
+    const data = await res.json();
+    openWebUiHost = data.openWebUiHost;
+    openWebUiPort = data.openWebUiPort;
+    
+    const pane = document.getElementById('chatSettingsPane');
+    if (pane) pane.classList.add('hidden');
+    toast('Copilot settings saved!', 'success');
+    
+    // If the WebUI iframe is loaded, update its src
+    const iframe = document.getElementById('chatWebuiIframe');
+    if (iframe && iframe.src) {
+      iframe.src = `http://${openWebUiHost}:${openWebUiPort}`;
+    }
+  } catch (err) {
+    toast('Failed to save settings: ' + err.message, 'error');
+  } finally {
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.textContent = originalText;
+    }
+  }
+}
+
+async function verifyConnection() {
+  const host = document.getElementById('chatHost').value.trim() || 'localhost';
+  const port = parseInt(document.getElementById('chatPort').value, 10) || 3002;
+  const resultEl = document.getElementById('verifyConnectionResult');
+  const verifyBtn = document.getElementById('chatVerifyBtn');
+  
+  if (resultEl) {
+    resultEl.textContent = 'Connecting...';
+    resultEl.style.color = '#a5b4fc';
+  }
+  if (verifyBtn) {
+    verifyBtn.disabled = true;
+  }
+  
+  try {
+    const response = await fetch('/api/settings/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ host, port })
+    });
+    
+    const data = await response.json();
+    if (response.ok && data.success) {
+      if (resultEl) {
+        resultEl.textContent = '✓ Connected successfully!';
+        resultEl.style.color = '#10b981';
+      }
+      toast('Open WebUI connection verified!', 'success');
+    } else {
+      throw new Error(data.error || 'Unknown connection error');
+    }
+  } catch (err) {
+    if (resultEl) {
+      resultEl.textContent = `✗ Connection failed: ${err.message}`;
+      resultEl.style.color = '#ef4444';
+    }
+    toast('Connection failed', 'error');
+  } finally {
+    if (verifyBtn) {
+      verifyBtn.disabled = false;
+    }
+  }
 }
 
 async function refreshChatModels() {
@@ -1900,7 +2016,7 @@ async function sendChatMessage() {
   const selectedModel = localStorage.getItem('jobboard_chat_model') || '';
 
   if (!selectedModel) {
-    appendChatMessage('assistant', '⚠️ Please configure a model in settings (⚙️) first. Make sure your local Open WebUI container is running on port 3002.');
+    appendChatMessage('assistant', `⚠️ Please configure a model in settings (⚙️) first. Make sure your local Open WebUI container is running at ${openWebUiHost}:${openWebUiPort}.`);
     inputEl.disabled = false;
     sendBtn.disabled = false;
     chatActiveRequest = false;
@@ -1999,7 +2115,7 @@ async function sendChatMessage() {
 
   } catch (err) {
     console.error('Chat error:', err);
-    appendChatMessage('assistant', `❌ Error: ${err.message}. Make sure the Open WebUI container is running on port 3002, your API key is correct, and the proxy is active.`);
+    appendChatMessage('assistant', `❌ Error: ${err.message}. Make sure the Open WebUI container is running at ${openWebUiHost}:${openWebUiPort}, your API key is correct, and the proxy is active.`);
   } finally {
     inputEl.disabled = false;
     sendBtn.disabled = false;

@@ -7,6 +7,8 @@ const { ZipArchive } = require('archiver');
 const unzipper = require('unzipper');
 const multer  = require('multer');
 const fetch = require('node-fetch');
+const http = require('http');
+const https = require('https');
 
 const app = express();
 const PORT = 3000;
@@ -18,6 +20,7 @@ const BACKUPS_DIR    = path.join(DATA_DIR, 'backups');
 const JOBS_FILE      = path.join(DATA_DIR, 'jobs.json');
 const BACKUP_FILE    = path.join(DATA_DIR, 'jobs.backup.json');
 const NOTEPAD_FILE   = path.join(DATA_DIR, 'notepad.json');
+const SETTINGS_FILE  = path.join(DATA_DIR, 'settings.json');
 
 // ── Bootstrap directories ────────────────────────────────────────────────────
 [DATA_DIR, CACHE_DIR, BACKUPS_DIR].forEach(dir => {
@@ -29,6 +32,25 @@ if (!fs.existsSync(JOBS_FILE)) {
 }
 if (!fs.existsSync(NOTEPAD_FILE)) {
   fs.writeFileSync(NOTEPAD_FILE, JSON.stringify({ text: '', updatedAt: null }, null, 2));
+}
+
+let settings = {
+  openWebUiHost: 'localhost',
+  openWebUiPort: 3002
+};
+
+if (fs.existsSync(SETTINGS_FILE)) {
+  try {
+    settings = { ...settings, ...JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8')) };
+  } catch (err) {
+    console.error('[Settings] Failed to load settings.json:', err.message);
+  }
+} else {
+  try {
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
+  } catch (err) {
+    console.error('[Settings] Failed to create settings.json:', err.message);
+  }
 }
 
 // ── Middleware ───────────────────────────────────────────────────────────────
@@ -398,10 +420,95 @@ app.put('/api/notepad', (req, res) => {
 
 // ── Chat Proxy ───────────────────────────────────────────────────────────────
 
-// Proxy to local Open WebUI container at http://localhost:3002
+// ── Settings ───────────────────────────────────────────────────────────────
+
+app.get('/api/settings', (req, res) => {
+  res.json(settings);
+});
+
+app.put('/api/settings', (req, res) => {
+  const { openWebUiHost, openWebUiPort } = req.body;
+  if (!openWebUiHost || !openWebUiPort) {
+    return res.status(400).json({ error: 'openWebUiHost and openWebUiPort are required.' });
+  }
+  settings.openWebUiHost = openWebUiHost.trim();
+  settings.openWebUiPort = parseInt(openWebUiPort, 10);
+  
+  try {
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
+    res.json(settings);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to save settings: ' + err.message });
+  }
+});
+
+function checkConnection(host, port) {
+  return new Promise((resolve, reject) => {
+    let cleanHost = host.trim();
+    let isHttps = false;
+    if (cleanHost.startsWith('https://')) {
+      cleanHost = cleanHost.replace('https://', '');
+      isHttps = true;
+    } else if (cleanHost.startsWith('http://')) {
+      cleanHost = cleanHost.replace('http://', '');
+    }
+    
+    // Strip trailing slashes/paths
+    cleanHost = cleanHost.split('/')[0];
+    
+    const client = isHttps ? https : http;
+    const options = {
+      host: cleanHost,
+      port: port,
+      path: '/api/models',
+      method: 'GET',
+      timeout: 3000
+    };
+    
+    const req = client.request(options, (res) => {
+      resolve({ success: true, status: res.statusCode });
+    });
+    
+    req.on('error', (err) => {
+      let errMsg = err.message;
+      if (err.errors && Array.isArray(err.errors)) {
+        errMsg = err.errors.map(e => e.message).join('; ');
+      }
+      if (!errMsg) {
+        errMsg = err.code || err.toString();
+      }
+      reject(new Error(errMsg));
+    });
+    
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error('Connection timed out after 3 seconds'));
+    });
+    
+    req.end();
+  });
+}
+
+app.post('/api/settings/verify', async (req, res) => {
+  const { host, port } = req.body;
+  if (!host || !port) {
+    return res.status(400).json({ success: false, error: 'Host and port are required.' });
+  }
+  
+  try {
+    const result = await checkConnection(host, port);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── Chat Proxy ───────────────────────────────────────────────────────────────
+
+// Proxy to local Open WebUI container
 app.all('/api/chat-proxy/*', async (req, res) => {
   const targetPath = req.url.replace('/api/chat-proxy', '');
-  const targetUrl = `http://localhost:3002${targetPath}`;
+  const targetUrl = `http://${settings.openWebUiHost}:${settings.openWebUiPort}${targetPath}`;
 
   try {
     const headers = {};
@@ -436,7 +543,7 @@ app.all('/api/chat-proxy/*', async (req, res) => {
     }
   } catch (err) {
     console.error('[Chat Proxy] Failed:', err.message);
-    res.status(500).json({ error: `Could not connect to Open WebUI container. Is it running on port 3002?` });
+    res.status(500).json({ error: `Could not connect to Open WebUI container. Is it running at ${settings.openWebUiHost}:${settings.openWebUiPort}?` });
   }
 });
 
