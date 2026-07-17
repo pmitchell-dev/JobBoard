@@ -69,8 +69,6 @@ function createBackup() {
     if (!fs.existsSync(JOBS_FILE)) return;
 
     // Safety guard: never overwrite a populated backup with an empty array.
-    // This prevents a blank jobs.json (e.g. from a fresh container start or
-    // accidental reset) from destroying the last known-good backup.
     const currentJobs = JSON.parse(fs.readFileSync(JOBS_FILE, 'utf8'));
     if (currentJobs.length === 0 && fs.existsSync(BACKUP_FILE)) {
       const backupJobs = JSON.parse(fs.readFileSync(BACKUP_FILE, 'utf8'));
@@ -80,25 +78,71 @@ function createBackup() {
       }
     }
 
-    // Rolling backup — always kept, overwritten each time
+    // Rolling backup (database JSON only) — always kept, overwritten each time
     fs.copyFileSync(JOBS_FILE, BACKUP_FILE);
 
-    // Daily snapshot
+    // Full daily zip snapshot
     const today = new Date().toISOString().split('T')[0];
-    const dailyFile = path.join(BACKUPS_DIR, `jobs-${today}.json`);
-    if (!fs.existsSync(dailyFile)) {
-      fs.copyFileSync(JOBS_FILE, dailyFile);
-    }
+    const dailyZipFile = path.join(BACKUPS_DIR, `jobboard-backup-${today}.jobboard`);
 
-    // Prune daily backups — keep last 14
-    const backups = fs.readdirSync(BACKUPS_DIR)
-      .filter(f => f.startsWith('jobs-') && f.endsWith('.json'))
-      .sort();
-    while (backups.length > 14) {
-      fs.unlinkSync(path.join(BACKUPS_DIR, backups.shift()));
+    if (!fs.existsSync(dailyZipFile)) {
+      const output = fs.createWriteStream(dailyZipFile);
+      const archive = new ZipArchive({ zlib: { level: 6 } });
+
+      output.on('close', () => {
+        console.log(`[Backup] Successfully created daily zip backup: ${path.basename(dailyZipFile)} (${archive.pointer()} bytes)`);
+        pruneBackups();
+      });
+
+      archive.on('error', err => {
+        console.error('[Backup] Archive error:', err.message);
+      });
+
+      archive.pipe(output);
+
+      // Core data files
+      if (fs.existsSync(JOBS_FILE))    archive.file(JOBS_FILE,    { name: 'jobs.json' });
+      if (fs.existsSync(NOTEPAD_FILE)) archive.file(NOTEPAD_FILE, { name: 'notepad.json' });
+
+      // Cache directory (screenshots + PDFs + attachments)
+      if (fs.existsSync(CACHE_DIR)) {
+        const cacheFiles = fs.readdirSync(CACHE_DIR);
+        cacheFiles.forEach(f => {
+          archive.file(path.join(CACHE_DIR, f), { name: `cache/${f}` });
+        });
+      }
+
+      archive.finalize();
+    } else {
+      // If today's backup already exists, just prune to be safe
+      pruneBackups();
     }
   } catch (err) {
     console.error('[Backup] Failed:', err.message);
+  }
+}
+
+function pruneBackups() {
+  try {
+    const files = fs.readdirSync(BACKUPS_DIR)
+      .filter(f => (f.startsWith('jobboard-backup-') && f.endsWith('.jobboard')) || (f.startsWith('jobs-') && f.endsWith('.json')))
+      .map(name => {
+        const filePath = path.join(BACKUPS_DIR, name);
+        return {
+          name,
+          filePath,
+          time: fs.statSync(filePath).mtime.getTime()
+        };
+      })
+      .sort((a, b) => a.time - b.time); // Oldest first
+
+    while (files.length > 5) {
+      const fileToDelete = files.shift();
+      fs.unlinkSync(fileToDelete.filePath);
+      console.log(`[Backup] Pruned old backup file: ${fileToDelete.name}`);
+    }
+  } catch (err) {
+    console.error('[Backup] Pruning failed:', err.message);
   }
 }
 
@@ -1041,7 +1085,7 @@ app.use('/cache', express.static(CACHE_DIR));
 app.get('/api/backup-status', (req, res) => {
   const hasRolling = fs.existsSync(BACKUP_FILE);
   const daily = fs.existsSync(BACKUPS_DIR)
-    ? fs.readdirSync(BACKUPS_DIR).filter(f => f.endsWith('.json')).sort().reverse()
+    ? fs.readdirSync(BACKUPS_DIR).filter(f => f.endsWith('.json') || f.endsWith('.jobboard')).sort().reverse()
     : [];
   res.json({
     hasRollingBackup: hasRolling,
