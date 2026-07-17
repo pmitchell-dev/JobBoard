@@ -1229,6 +1229,129 @@ app.post('/api/import', upload.single('file'), async (req, res) => {
   }
 });
 
+// POST /api/restore  — restore from a backup file on the server
+app.post('/api/restore', express.json(), async (req, res) => {
+  const { filename, mode } = req.body;
+  if (!filename) return res.status(400).json({ error: 'filename is required' });
+
+  const restoreMode = (mode || 'replace').toLowerCase();
+  if (restoreMode !== 'replace' && restoreMode !== 'merge') {
+    return res.status(400).json({ error: 'mode must be "replace" or "merge"' });
+  }
+
+  // Prevent directory traversal
+  const safeFilename = path.basename(filename);
+  const filepath = path.join(BACKUPS_DIR, safeFilename);
+
+  if (!fs.existsSync(filepath)) {
+    return res.status(404).json({ error: `Backup file not found: ${safeFilename}` });
+  }
+
+  try {
+    let added = 0, skipped = 0;
+
+    if (safeFilename.endsWith('.json')) {
+      // Legacy JSON backup restore
+      const importedJobs = JSON.parse(fs.readFileSync(filepath, 'utf8'));
+
+      if (restoreMode === 'replace') {
+        createBackup();
+        writeJobs(importedJobs);
+        added = importedJobs.length;
+      } else {
+        const existingJobs = readJobs();
+        const existingIds  = new Set(existingJobs.map(j => j.id));
+        const toAdd        = importedJobs.filter(j => !existingIds.has(j.id));
+        skipped            = importedJobs.length - toAdd.length;
+        added              = toAdd.length;
+
+        if (toAdd.length > 0) {
+          writeJobs([...existingJobs, ...toAdd]);
+        }
+      }
+      console.log(`[Restore] Restored legacy JSON backup: ${safeFilename} mode=${restoreMode} added=${added} skipped=${skipped}`);
+      return res.json({ success: true, mode: restoreMode, added, skipped });
+    }
+
+    if (safeFilename.endsWith('.jobboard')) {
+      // .jobboard zip backup restore
+      const zipBuffer = fs.readFileSync(filepath);
+      const directory = await unzipper.Open.buffer(zipBuffer);
+      const entryMap  = {};
+      for (const entry of directory.files) {
+        entryMap[entry.path] = entry;
+      }
+
+      if (!entryMap['jobs.json']) {
+        return res.status(400).json({ error: 'Invalid backup file — jobs.json not found inside zip' });
+      }
+
+      const importedJobsBuf  = await entryMap['jobs.json'].buffer();
+      const importedJobs     = JSON.parse(importedJobsBuf.toString('utf8'));
+      const importedNotepadBuf = entryMap['notepad.json'] ? await entryMap['notepad.json'].buffer() : null;
+      const importedNotepad    = importedNotepadBuf ? JSON.parse(importedNotepadBuf.toString('utf8')) : null;
+
+      if (restoreMode === 'replace') {
+        createBackup();
+        writeJobs(importedJobs);
+        added = importedJobs.length;
+
+        if (importedNotepad) {
+          fs.writeFileSync(NOTEPAD_FILE, JSON.stringify(importedNotepad, null, 2));
+        }
+
+        // Replace all cache files
+        for (const [entryPath, entry] of Object.entries(entryMap)) {
+          if (entryPath.startsWith('cache/') && (entryPath.endsWith('.png') || entryPath.endsWith('.pdf'))) {
+            const cacheFilename = path.basename(entryPath);
+            const buf = await entry.buffer();
+            fs.writeFileSync(path.join(CACHE_DIR, cacheFilename), buf);
+          }
+        }
+      } else {
+        // Merge mode
+        const existingJobs = readJobs();
+        const existingIds  = new Set(existingJobs.map(j => j.id));
+        const toAdd        = importedJobs.filter(j => !existingIds.has(j.id));
+        skipped            = importedJobs.length - toAdd.length;
+        added              = toAdd.length;
+
+        if (toAdd.length > 0) {
+          writeJobs([...existingJobs, ...toAdd]);
+
+          const newIds = new Set(toAdd.map(j => j.id));
+          for (const [entryPath, entry] of Object.entries(entryMap)) {
+            if (entryPath.startsWith('cache/')) {
+              const cacheFilename = path.basename(entryPath);
+              const isNew = [...newIds].some(id => cacheFilename.startsWith(id));
+              if (isNew) {
+                const buf = await entry.buffer();
+                fs.writeFileSync(path.join(CACHE_DIR, cacheFilename), buf);
+              }
+            }
+          }
+        }
+
+        if (importedNotepad && importedNotepad.text) {
+          const existing = JSON.parse(fs.readFileSync(NOTEPAD_FILE, 'utf8'));
+          const combined = (existing.text || '').trim();
+          const divider  = combined ? `\n\n── Restored Backup ${new Date().toISOString().split('T')[0]} ──\n` : '';
+          const merged   = combined + divider + importedNotepad.text;
+          fs.writeFileSync(NOTEPAD_FILE, JSON.stringify({ text: merged, updatedAt: new Date().toISOString() }, null, 2));
+        }
+      }
+
+      console.log(`[Restore] Restored zip backup: ${safeFilename} mode=${restoreMode} added=${added} skipped=${skipped}`);
+      return res.json({ success: true, mode: restoreMode, added, skipped });
+    }
+
+    return res.status(400).json({ error: 'Unsupported file extension. Only .json and .jobboard backups are supported.' });
+  } catch (err) {
+    console.error('[Restore] Failed:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Start ────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`\n🚀  JobBoard  →  http://localhost:${PORT}`);

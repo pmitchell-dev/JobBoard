@@ -1509,12 +1509,97 @@ async function loadBackupStatus() {
   } catch { /* silently ignore */ }
 }
 
+async function openBackupRestoreModal() {
+  const listEl = document.getElementById('backupRestoreList');
+  listEl.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">Loading backups...</div>';
+  show('backupRestoreModal');
+
+  try {
+    const s = await api('GET', '/api/backup-status');
+    const backups = s.dailyBackups || [];
+    
+    if (backups.length === 0) {
+      listEl.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">No backups found on server.</div>';
+      return;
+    }
+
+    listEl.innerHTML = backups.map(b => {
+      const isZip = b.endsWith('.jobboard');
+      const icon = isZip ? '📦' : '📄';
+      const typeLabel = isZip ? 'Full Zip Backup' : 'Database JSON Only';
+      
+      const dateMatch = b.match(/\d{4}-\d{2}-\d{2}/);
+      const dateStr = dateMatch ? fmtDate(dateMatch[0]) : 'Unknown Date';
+
+      return `
+        <div class="backup-item">
+          <div class="backup-item-info">
+            <div class="backup-item-title">${icon} Backup from ${dateStr}</div>
+            <div class="backup-item-meta">${typeLabel} (${b})</div>
+          </div>
+          <div class="backup-item-actions">
+            <button class="btn-restore-merge" onclick="confirmRestore('${b}', 'merge')">Merge</button>
+            <button class="btn-restore-replace" onclick="confirmRestore('${b}', 'replace')">Replace</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+  } catch (err) {
+    listEl.innerHTML = `<div style="text-align:center; padding: 20px; color: #ef4444;">Failed to load backups: ${err.message}</div>`;
+  }
+}
+
+function closeBackupRestoreModal() {
+  hide('backupRestoreModal');
+}
+
+async function confirmRestore(filename, mode) {
+  const modeText = mode === 'replace' 
+    ? 'This will COMPLETELY OVERWRITE your current board with the backup data. Your current data will be backed up first.' 
+    : 'This will add new jobs from the backup without modifying your existing entries.';
+
+  if (!confirm(`Are you sure you want to restore "${filename}" using ${mode.toUpperCase()} mode?\n\n${modeText}`)) {
+    return;
+  }
+
+  const listEl = document.getElementById('backupRestoreList');
+  const buttons = listEl.querySelectorAll('button');
+  buttons.forEach(btn => btn.disabled = true);
+
+  const clickedBtn = Array.from(buttons).find(btn => 
+    btn.getAttribute('onclick')?.includes(filename) && btn.getAttribute('onclick')?.includes(mode)
+  );
+  const origText = clickedBtn ? clickedBtn.textContent : '';
+  if (clickedBtn) clickedBtn.textContent = 'Restoring...';
+
+  try {
+    const res = await api('POST', '/api/restore', { filename, mode });
+    if (res.success) {
+      toast(`✅ Backup restored successfully (${res.added} added, ${res.skipped} skipped)`, 'success');
+      closeBackupRestoreModal();
+      await loadJobs();
+      renderBoard();
+      renderStats();
+      applyFilter();
+      loadBackupStatus();
+    } else {
+      throw new Error(res.error || 'Restore failed');
+    }
+  } catch (err) {
+    toast(`Restore failed: ${err.message}`, 'error');
+    buttons.forEach(btn => btn.disabled = false);
+    if (clickedBtn) clickedBtn.textContent = origText;
+  }
+}
+
 // ── Modal helpers ─────────────────────────────────────────────────────────
 function handleOverlayClick(e, id) {
   if (e.target.id === id) {
     if (id === 'addModal') closeAddModal();
     else if (id === 'editModal') closeEditModal();
     else if (id === 'importModal') closeImportModal();
+    else if (id === 'backupRestoreModal') closeBackupRestoreModal();
   }
 }
 function show(id) { document.getElementById(id).classList.remove('hidden'); }

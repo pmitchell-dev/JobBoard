@@ -49,7 +49,7 @@
       </div>
 
       <div class="header-actions">
-        <div class="backup-indicator" id="backupIndicator" title="Backup status">
+        <div class="backup-indicator" id="backupIndicator" onclick="openBackupRestoreModal()" title="View & Restore Server Backups" style="cursor: pointer;">
           <span class="backup-dot"></span>
           <span class="backup-label">Backed up</span>
         </div>
@@ -501,6 +501,27 @@
       </div>
       <div class="modal-footer">
         <button class="btn-secondary" onclick="closeImportModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Backup Restore Modal ────────────────────────────────────────── -->
+  <div class="modal-overlay hidden" id="backupRestoreModal" onclick="handleOverlayClick(event,'backupRestoreModal')">
+    <div class="modal modal-backup" role="dialog" aria-modal="true" aria-labelledby="backupRestoreModalTitle">
+      <div class="modal-header">
+        <h2 id="backupRestoreModalTitle" class="modal-title">Restore Server Backup</h2>
+        <button class="modal-close-btn" onclick="closeBackupRestoreModal()" aria-label="Close">&#x2715;</button>
+      </div>
+      <div class="modal-body">
+        <p class="field-hint" style="margin-bottom: 12px; font-size: 0.8rem; line-height: 1.45; color: var(--text-muted);">
+          Select a backup archive stored on the local server to restore from. Restoring in <strong>Replace</strong> mode will save a rolling backup of your current state first, then replace all jobs, notepad text, and cached screenshots/attachments. Restoring in <strong>Merge</strong> mode will add missing jobs without modifying existing ones.
+        </p>
+        <div class="backup-list" id="backupRestoreList">
+          <!-- populated dynamically by JS -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeBackupRestoreModal()">Cancel</button>
       </div>
     </div>
   </div>
