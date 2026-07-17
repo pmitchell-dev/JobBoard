@@ -510,11 +510,28 @@ app.put('/api/settings', (req, res) => {
   }
 });
 
-function checkConnection(host, port) {
+function getClientIp(req) {
+  let ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+  if (ip) {
+    if (ip.includes(',')) {
+      ip = ip.split(',')[0].trim();
+    }
+    if (ip.startsWith('::ffff:')) {
+      ip = ip.replace('::ffff:', '');
+    }
+  }
+  return ip;
+}
+
+function checkConnection(host, port, clientIp) {
   return new Promise((resolve, reject) => {
     let cleanHost = host.trim();
-    if ((cleanHost === 'localhost' || cleanHost === '127.0.0.1') && fs.existsSync('/.dockerenv')) {
-      cleanHost = 'host.docker.internal';
+    if (cleanHost === 'localhost' || cleanHost === '127.0.0.1') {
+      if (clientIp && clientIp !== '127.0.0.1' && clientIp !== '::1' && clientIp !== 'localhost') {
+        cleanHost = clientIp;
+      } else if (fs.existsSync('/.dockerenv')) {
+        cleanHost = 'host.docker.internal';
+      }
     }
     let isHttps = false;
     if (cleanHost.startsWith('https://')) {
@@ -577,7 +594,7 @@ app.post('/api/settings/verify', async (req, res) => {
   }
   
   try {
-    const result = await checkConnection(host, portVal);
+    const result = await checkConnection(host, portVal, getClientIp(req));
     res.json(result);
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -590,8 +607,13 @@ app.post('/api/settings/verify', async (req, res) => {
 app.all('/api/chat-proxy/*', async (req, res) => {
   const targetPath = req.url.replace('/api/chat-proxy', '');
   let host = settings.openWebUiHost;
-  if ((host === 'localhost' || host === '127.0.0.1') && fs.existsSync('/.dockerenv')) {
-    host = 'host.docker.internal';
+  if (host === 'localhost' || host === '127.0.0.1') {
+    const clientIp = getClientIp(req);
+    if (clientIp && clientIp !== '127.0.0.1' && clientIp !== '::1' && clientIp !== 'localhost') {
+      host = clientIp;
+    } else if (fs.existsSync('/.dockerenv')) {
+      host = 'host.docker.internal';
+    }
   }
   const targetUrl = `http://${host}:${settings.openWebUiPort}${targetPath}`;
 
