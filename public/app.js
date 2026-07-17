@@ -283,8 +283,9 @@ async function saveNewJob() {
     // Upload screenshot if one was attached in the add modal
     if (pendingAddScreenshot) {
       try {
-        await api('POST', `/api/screenshot/${job.id}`, { imageData: pendingAddScreenshot });
-        job.screenshot = true;
+        const result = await api('POST', `/api/screenshot/${job.id}`, { imageData: pendingAddScreenshot });
+        if (!Array.isArray(job.screenshots)) job.screenshots = [];
+        job.screenshots.push(result.screenshot);
       } catch (err) {
         console.warn('Screenshot upload failed:', err.message);
       }

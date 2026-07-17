@@ -104,18 +104,57 @@ function createBackup() {
 
 // ── Data helpers ─────────────────────────────────────────────────────────────
 function readJobs() {
+  let jobs = [];
+  let corrupted = false;
   try {
-    return JSON.parse(fs.readFileSync(JOBS_FILE, 'utf8'));
+    jobs = JSON.parse(fs.readFileSync(JOBS_FILE, 'utf8'));
   } catch {
+    corrupted = true;
+  }
+
+  if (corrupted) {
     // Attempt auto-recovery from rolling backup
     if (fs.existsSync(BACKUP_FILE)) {
       console.warn('[Recovery] jobs.json corrupted — restoring from backup...');
-      fs.copyFileSync(BACKUP_FILE, JOBS_FILE);
-      return JSON.parse(fs.readFileSync(JOBS_FILE, 'utf8'));
+      try {
+        fs.copyFileSync(BACKUP_FILE, JOBS_FILE);
+        jobs = JSON.parse(fs.readFileSync(JOBS_FILE, 'utf8'));
+      } catch (recoveryErr) {
+        console.error('[Recovery] Backup file also corrupted:', recoveryErr.message);
+        return [];
+      }
+    } else {
+      console.error('[Recovery] No backup available — starting fresh.');
+      return [];
     }
-    console.error('[Recovery] No backup available — starting fresh.');
-    return [];
   }
+
+  // Perform legacy screenshot migration
+  let migrated = false;
+  jobs.forEach(job => {
+    if (job.screenshot === true && (!job.screenshots || !Array.isArray(job.screenshots))) {
+      const legacyFilename = `${job.id}-screenshot.png`;
+      if (fs.existsSync(path.join(CACHE_DIR, legacyFilename))) {
+        job.screenshots = [{
+          id: 'legacy',
+          filename: legacyFilename,
+          addedAt: job.createdAt || new Date().toISOString()
+        }];
+        migrated = true;
+      }
+    }
+  });
+
+  if (migrated) {
+    try {
+      fs.writeFileSync(JOBS_FILE, JSON.stringify(jobs, null, 2));
+      console.log('[Migration] Migrated legacy screenshots to new format and saved jobs.json');
+    } catch (err) {
+      console.error('[Migration] Failed to write migrated jobs.json:', err.message);
+    }
+  }
+
+  return jobs;
 }
 
 function writeJobs(jobs) {
