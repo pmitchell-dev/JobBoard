@@ -76,6 +76,16 @@ body {
 .backup-indicator {
   display: flex; align-items: center; gap: 6px;
   font-size: 0.72rem; color: var(--text-muted);
+  transition: all 0.18s ease;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+}
+.backup-indicator:hover {
+  color: var(--text);
+  background: var(--surface-hov);
+  border-color: var(--border);
+  transform: translateY(-1px);
 }
 .backup-dot {
   width: 7px; height: 7px; border-radius: 50%;
