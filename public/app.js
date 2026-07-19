@@ -15,7 +15,7 @@ const COLUMNS = [
 
 // ── Init ──────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
-  console.log("JobBoard loaded: v1.1.4");
+  console.log("JobBoard loaded: v1.1.5");
   document.getElementById('addDate').value = todayStr();
   await loadJobs();
   renderBoard();

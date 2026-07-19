@@ -6,6 +6,7 @@ data/jobs.json
 data/notepad.json
 data/jobs.backup.json
 data/notepad.backup.json
+data/settings.json
 data/backups/
 
 # ── Cache artefacts (PDFs + screenshots — can be very large) ──────────────────
