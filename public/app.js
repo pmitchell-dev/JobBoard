@@ -15,7 +15,7 @@ const COLUMNS = [
 
 // ── Init ──────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
-  console.log("JobBoard loaded: v1.1.2");
+  console.log("JobBoard loaded: v1.1.3");
   document.getElementById('addDate').value = todayStr();
   await loadJobs();
   renderBoard();
@@ -1893,6 +1893,7 @@ function initChatCopilot() {
       if (!popup.contains(e.target) && e.target !== triggerBtn && !triggerBtn?.contains(e.target)) {
         hidePromptsPopup();
       }
+    }
   });
 }
 
