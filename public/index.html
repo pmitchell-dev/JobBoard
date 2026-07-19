@@ -637,14 +637,21 @@
     </div>
 
     <!-- Tab Content 1: Chat UI -->
-    <div class="chat-tab-content" id="chatTabContentUi">
+    <div class="chat-tab-content" id="chatTabContentUi" style="position: relative;">
       <div class="chat-messages" id="chatMessages">
         <div class="chat-msg assistant">
           <div class="chat-msg-text">Hi! I'm your JobBoard AI Assistant. I can help you summarize notes, draft emails, check your dashboard status, or write resumes. Ask me anything!</div>
         </div>
       </div>
+      
+      <!-- Autocomplete popup for prompts -->
+      <div class="chat-prompts-popup hidden" id="chatPromptsPopup"></div>
+      
       <div class="chat-input-area">
-        <textarea id="chatInput" placeholder="Ask Copilot..." rows="1"></textarea>
+        <button class="chat-prompt-trigger-btn" id="chatPromptTriggerBtn" onclick="togglePromptsPopup(event)" title="Browse Open WebUI Prompts" aria-label="Browse Prompts">
+          <span>/</span>
+        </button>
+        <textarea id="chatInput" placeholder="Ask Copilot (type / for prompts)..." rows="1"></textarea>
         <button class="chat-send-btn" id="chatSendBtn" onclick="sendChatMessage()">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <line x1="22" y1="2" x2="11" y2="13"/>

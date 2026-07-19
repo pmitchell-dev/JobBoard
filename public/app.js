@@ -1816,12 +1816,14 @@ function initChatCopilot() {
       if (hostEl) hostEl.value = openWebUiHost;
       if (portEl) portEl.value = openWebUiPort;
       
-      // Trigger models load after settings are loaded
+      // Trigger models and prompts load after settings are loaded
       refreshChatModels();
+      refreshChatPrompts();
     })
     .catch(err => {
       console.warn('Failed to load Open WebUI settings:', err);
       refreshChatModels();
+      refreshChatPrompts();
     });
 
   // Textarea auto-resize
@@ -1830,13 +1832,290 @@ function initChatCopilot() {
     inputEl.style.height = Math.min(120, inputEl.scrollHeight) + 'px';
   });
 
-  // Submit on Enter
+  // Handle autocomplete keys or standard Enter key
   inputEl.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendChatMessage();
+    const popup = document.getElementById('chatPromptsPopup');
+    const isPopupVisible = popup && !popup.classList.contains('hidden');
+
+    if (isPopupVisible) {
+      const items = popup.querySelectorAll('.chat-prompt-item');
+      if (items.length > 0) {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          activePromptIndex = (activePromptIndex + 1) % items.length;
+          updateSelectedPromptItem();
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          activePromptIndex = (activePromptIndex - 1 + items.length) % items.length;
+          updateSelectedPromptItem();
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          if (activePromptIndex >= 0 && activePromptIndex < items.length) {
+            selectPromptByIndex(activePromptIndex);
+          } else {
+            // Default to selecting the first item if none selected but Enter pressed
+            selectPromptByIndex(0);
+          }
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          hidePromptsPopup();
+        }
+      } else {
+        if (e.key === 'Escape' || e.key === 'Enter') {
+          e.preventDefault();
+          hidePromptsPopup();
+        }
+      }
+    } else {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendChatMessage();
+      }
     }
   });
+
+  // Watch for '/' trigger or changes in input
+  inputEl.addEventListener('input', () => {
+    const text = inputEl.value;
+    if (text.startsWith('/')) {
+      const filterText = text.substring(1);
+      showPromptsPopup(filterText);
+    } else {
+      hidePromptsPopup();
+    }
+  });
+
+  // Global click listener to close prompts popup when clicking outside
+  document.addEventListener('click', e => {
+    const popup = document.getElementById('chatPromptsPopup');
+    const triggerBtn = document.getElementById('chatPromptTriggerBtn');
+    if (popup && !popup.classList.contains('hidden')) {
+      if (!popup.contains(e.target) && e.target !== triggerBtn && !triggerBtn?.contains(e.target)) {
+        hidePromptsPopup();
+      }
+  });
+}
+
+// ── Prompts Handling ─────────────────────────────────────────────────────────
+let openWebUiPrompts = [];
+let activePromptIndex = -1;
+
+async function refreshChatPrompts() {
+  const apiKey = localStorage.getItem('jobboard_chat_apikey') || '';
+  try {
+    let response = await fetch('/api/chat-proxy/api/v1/prompts', {
+      headers: apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {}
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to load prompts (Status ${response.status})`);
+    }
+
+    const data = await response.json();
+    if (Array.isArray(data)) {
+      openWebUiPrompts = data;
+    } else {
+      openWebUiPrompts = [];
+    }
+    console.log(`Loaded ${openWebUiPrompts.length} custom prompts from Open WebUI`);
+  } catch (err) {
+    console.error('Error fetching prompts:', err);
+    openWebUiPrompts = [];
+  }
+}
+
+function togglePromptsPopup(event) {
+  if (event) {
+    event.stopPropagation();
+    event.preventDefault();
+  }
+  const popup = document.getElementById('chatPromptsPopup');
+  const triggerBtn = document.getElementById('chatPromptTriggerBtn');
+  if (!popup) return;
+
+  const isHidden = popup.classList.contains('hidden');
+  if (isHidden) {
+    showPromptsPopup('');
+    triggerBtn?.classList.add('active');
+  } else {
+    hidePromptsPopup();
+  }
+}
+
+function hidePromptsPopup() {
+  const popup = document.getElementById('chatPromptsPopup');
+  const triggerBtn = document.getElementById('chatPromptTriggerBtn');
+  if (popup) {
+    popup.classList.add('hidden');
+    popup.innerHTML = '';
+  }
+  triggerBtn?.classList.remove('active');
+  activePromptIndex = -1;
+}
+
+function showPromptsPopup(filterText = '') {
+  const popup = document.getElementById('chatPromptsPopup');
+  if (!popup) return;
+
+  if (openWebUiPrompts.length === 0) {
+    popup.innerHTML = `
+      <div class="chat-prompts-empty">
+        No prompts loaded. Make sure your Open WebUI API Key is set in 
+        <a onclick="toggleChatSettings(); hidePromptsPopup();">Settings (⚙️)</a>.
+      </div>
+    `;
+    popup.classList.remove('hidden');
+    return;
+  }
+
+  const filtered = openWebUiPrompts.filter(p => {
+    const cmd = p.command || '';
+    const name = p.name || '';
+    return cmd.toLowerCase().includes(filterText.toLowerCase()) ||
+           name.toLowerCase().includes(filterText.toLowerCase());
+  });
+
+  if (filtered.length === 0) {
+    popup.innerHTML = `<div class="chat-prompts-empty">No matching prompts found</div>`;
+    popup.classList.remove('hidden');
+    return;
+  }
+
+  popup.innerHTML = filtered.map((p, idx) => {
+    const command = p.command || '';
+    const name = p.name || '';
+    const content = p.content || '';
+    return `
+      <div class="chat-prompt-item" data-index="${idx}" onclick="selectPromptByIndex(${idx})">
+        <div class="chat-prompt-item-header">
+          <span class="chat-prompt-item-command">${esc(command)}</span>
+          <span class="chat-prompt-item-name">${esc(name)}</span>
+        </div>
+        <div class="chat-prompt-item-content">${esc(content)}</div>
+      </div>
+    `;
+  }).join('');
+
+  popup.classList.remove('hidden');
+  activePromptIndex = -1;
+  updateSelectedPromptItem();
+}
+
+function updateSelectedPromptItem() {
+  const popup = document.getElementById('chatPromptsPopup');
+  if (!popup) return;
+  const items = popup.querySelectorAll('.chat-prompt-item');
+  items.forEach((item, idx) => {
+    item.classList.toggle('selected', idx === activePromptIndex);
+    if (idx === activePromptIndex) {
+      item.scrollIntoView({ block: 'nearest' });
+    }
+  });
+}
+
+async function selectPromptByIndex(idx) {
+  const popup = document.getElementById('chatPromptsPopup');
+  if (!popup) return;
+  
+  const items = popup.querySelectorAll('.chat-prompt-item');
+  if (idx < 0 || idx >= items.length) return;
+  
+  const selectedItem = items[idx];
+  const command = selectedItem.querySelector('.chat-prompt-item-command').textContent;
+  const prompt = openWebUiPrompts.find(p => p.command === command);
+  if (!prompt) return;
+
+  hidePromptsPopup();
+
+  const inputEl = document.getElementById('chatInput');
+  if (!inputEl) return;
+
+  toast('Resolving template variables...', 'info');
+  const resolvedContent = await resolvePromptTemplateAsync(prompt.content);
+  
+  inputEl.value = resolvedContent;
+  inputEl.style.height = 'auto';
+  inputEl.style.height = Math.min(120, inputEl.scrollHeight) + 'px';
+  inputEl.focus();
+}
+
+async function resolvePromptTemplateAsync(template) {
+  const activeJob = activeJobId ? jobs.find(j => j.id === activeJobId) : null;
+  
+  const regex = /\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}/g;
+  let match;
+  let resolved = template;
+  
+  const variablesToResolve = [];
+  while ((match = regex.exec(template)) !== null) {
+    variablesToResolve.push(match[1]);
+  }
+  
+  for (const varName of variablesToResolve) {
+    const name = varName.trim().toLowerCase();
+    let replacement = null;
+    
+    if (name === 'clipboard') {
+      try {
+        replacement = await navigator.clipboard.readText();
+      } catch (err) {
+        console.warn('Could not read clipboard:', err);
+      }
+    } else if (activeJob) {
+      switch (name) {
+        case 'company':
+        case 'company_name':
+        case 'companyname':
+          replacement = activeJob.company || '';
+          break;
+        case 'title':
+        case 'job_title':
+        case 'jobtitle':
+        case 'role':
+          replacement = activeJob.title || '';
+          break;
+        case 'url':
+        case 'job_url':
+        case 'joburl':
+        case 'link':
+          replacement = activeJob.url || '';
+          break;
+        case 'notes':
+        case 'job_notes':
+        case 'jobnotes':
+        case 'updates':
+          replacement = (activeJob.notes || []).map(n => n.text).join('\n') || '';
+          break;
+        case 'emails':
+        case 'email_log':
+          replacement = (activeJob.emails || []).map(em => `From: ${em.from}\nSubject: ${em.subject}\nDate: ${em.date}\nBody:\n${em.body}`).join('\n\n') || '';
+          break;
+        case 'resume':
+          replacement = stripHtmlTags(activeJob.resume) || '';
+          break;
+        case 'cover_letter':
+        case 'coverletter':
+        case 'cover':
+          replacement = stripHtmlTags(activeJob.coverLetter) || '';
+          break;
+        case 'date_applied':
+        case 'dateapplied':
+        case 'date':
+          replacement = activeJob.dateApplied || '';
+          break;
+        case 'status':
+          replacement = activeJob.status || '';
+          break;
+      }
+    }
+    
+    if (replacement !== null) {
+      const targetRegex = new RegExp(`\\{\\{\\s*${varName}\\s*\\}\\}`, 'g');
+      resolved = resolved.replace(targetRegex, replacement);
+    }
+  }
+  
+  return resolved;
 }
 
 function toggleChat() {
@@ -2039,6 +2318,9 @@ async function saveChatSettings() {
     if (iframe && iframe.src) {
       iframe.src = `http://${openWebUiHost}:${openWebUiPort}`;
     }
+    
+    refreshChatModels();
+    refreshChatPrompts();
   } catch (err) {
     toast('Failed to save settings: ' + err.message, 'error');
   } finally {
