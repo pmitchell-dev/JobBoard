@@ -15,7 +15,7 @@ const COLUMNS = [
 
 // ── Init ──────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
-  console.log("JobBoard loaded: v1.1.5");
+  console.log("JobBoard loaded: v1.1.6");
   document.getElementById('addDate').value = todayStr();
   await loadJobs();
   renderBoard();
@@ -1903,30 +1903,50 @@ let activePromptIndex = -1;
 
 async function refreshChatPrompts() {
   const apiKey = localStorage.getItem('jobboard_chat_apikey') || '';
-  try {
-    let response = await fetch('/api/chat-proxy/api/v1/prompts', {
-      headers: apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {}
-    });
-    
-    if (!response.ok) {
-      response = await fetch('/api/chat-proxy/api/prompts', {
+  const endpoints = [
+    '/api/chat-proxy/api/v1/prompts',
+    '/api/chat-proxy/api/v1/prompts/',
+    '/api/chat-proxy/api/v1/prompts/list',
+    '/api/chat-proxy/api/prompts',
+    '/api/chat-proxy/api/prompts/'
+  ];
+  
+  let success = false;
+  
+  for (const url of endpoints) {
+    try {
+      console.log(`Trying to fetch prompts from: ${url}`);
+      const response = await fetch(url, {
         headers: apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {}
       });
+      
+      if (!response.ok) {
+        console.warn(`Fetch to ${url} failed with status ${response.status}`);
+        continue;
+      }
+      
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        console.warn(`Fetch to ${url} returned non-JSON content type: ${contentType}`);
+        continue;
+      }
+      
+      const data = await response.json();
+      if (Array.isArray(data)) {
+        openWebUiPrompts = data;
+        success = true;
+        console.log(`Successfully loaded ${openWebUiPrompts.length} custom prompts from ${url}`);
+        break;
+      } else {
+        console.warn(`Fetch to ${url} returned non-array data structure:`, data);
+      }
+    } catch (err) {
+      console.warn(`Error trying endpoint ${url}:`, err);
     }
-    
-    if (!response.ok) {
-      throw new Error(`Failed to load prompts (Status ${response.status})`);
-    }
-
-    const data = await response.json();
-    if (Array.isArray(data)) {
-      openWebUiPrompts = data;
-    } else {
-      openWebUiPrompts = [];
-    }
-    console.log(`Loaded ${openWebUiPrompts.length} custom prompts from Open WebUI`);
-  } catch (err) {
-    console.error('Error fetching prompts:', err);
+  }
+  
+  if (!success) {
+    console.error('All candidate prompt endpoints failed to load valid prompts.');
     openWebUiPrompts = [];
   }
 }
