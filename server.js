@@ -719,17 +719,25 @@ app.all('/api/chat-proxy/*', async (req, res) => {
       fetchOpts.body = JSON.stringify(req.body);
     }
 
+    console.log(`[Chat Proxy] Requesting: ${req.method} ${targetUrl} (Auth: ${headers['authorization'] ? 'Present' : 'None'})`);
     const response = await fetch(targetUrl, fetchOpts);
+    console.log(`[Chat Proxy] Response status: ${response.status}`);
 
     res.status(response.status);
     if (response.headers.get('content-type')) {
       res.setHeader('content-type', response.headers.get('content-type'));
     }
 
-    if (response.body && typeof response.body.pipe === 'function') {
-      response.body.pipe(res);
+    if (targetPath.includes('/chat/completions')) {
+      if (response.body && typeof response.body.pipe === 'function') {
+        response.body.pipe(res);
+      } else {
+        const buffer = await response.buffer();
+        res.send(buffer);
+      }
     } else {
       const buffer = await response.buffer();
+      console.log(`[Chat Proxy] Response body (first 500 chars):`, buffer.toString('utf8').substring(0, 500));
       res.send(buffer);
     }
   } catch (err) {

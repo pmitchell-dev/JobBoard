@@ -15,7 +15,7 @@ const COLUMNS = [
 
 // ── Init ──────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
-  console.log("JobBoard loaded: v1.1.3");
+  console.log("JobBoard loaded: v1.1.4");
   document.getElementById('addDate').value = todayStr();
   await loadJobs();
   renderBoard();
@@ -1907,6 +1907,12 @@ async function refreshChatPrompts() {
     let response = await fetch('/api/chat-proxy/api/v1/prompts', {
       headers: apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {}
     });
+    
+    if (!response.ok) {
+      response = await fetch('/api/chat-proxy/api/prompts', {
+        headers: apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {}
+      });
+    }
     
     if (!response.ok) {
       throw new Error(`Failed to load prompts (Status ${response.status})`);
