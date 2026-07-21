@@ -3238,17 +3238,37 @@ ${jobBulletsTemplate}
       // Step 5 — Assemble final HTML from locked skeleton + AI content
       toast('Assembling final resume...', 'info');
 
-      // Build competencies table from AI array
-      const compRows = (aiData.competencies || []).map(cat => {
-        const skillItems = (cat.skills || []).map(s => `<li>${s}</li>`).join('');
-        return `<tr><th>${cat.category || ''}</th></tr><tr><td><ul>${skillItems}</ul></td></tr>`;
-      });
-      const compTable = `<table class="competencies-table"><tbody>${compRows.join('')}</tbody></table>`;
+      // Build competencies as a proper 3-column side-by-side table
+      const comps = aiData.competencies || [];
+      let compTable = '';
+      if (comps.length > 0) {
+        const thCells = comps.map(cat => `<th>${cat.category || ''}</th>`).join('');
+        const maxSkills = Math.max(...comps.map(c => (c.skills || []).length));
+        let skillRows = '';
+        for (let i = 0; i < maxSkills; i++) {
+          const tdCells = comps.map(cat => {
+            const skill = (cat.skills || [])[i] || '';
+            return `<td>${skill ? `• ${skill}` : ''}</td>`;
+          }).join('');
+          skillRows += `<tr>${tdCells}</tr>`;
+        }
+        compTable = `<table class="competencies-table"><thead><tr>${thCells}</tr></thead><tbody>${skillRows}</tbody></table>`;
+      }
 
-      // Build experience section from locked skeleton + AI bullets
+      // Build experience section — fuzzy-match AI bullet keys to skeleton jobs
+      const aiBullets = aiData.jobBullets || {};
       const expHtml = skeleton.experience.map(job => {
-        const bullets = (aiData.jobBullets?.[job.key] || job.masterBullets || []);
-        const liItems = bullets.map(b => `<li>${b}</li>`).join('');
+        // Try exact key first, then fuzzy match by job title
+        let bullets = aiBullets[job.key];
+        if (!bullets) {
+          const titleLower = (job.title || '').toLowerCase();
+          const fuzzyKey = Object.keys(aiBullets).find(k =>
+            k.toLowerCase().includes(titleLower) || titleLower.includes(k.toLowerCase().split('@')[0].trim())
+          );
+          bullets = fuzzyKey ? aiBullets[fuzzyKey] : null;
+        }
+        const bulletList = bullets || job.masterBullets || [];
+        const liItems = bulletList.map(b => `<li>${b}</li>`).join('');
         const subLine = [job.sub, job.company].filter(Boolean).join(' – ');
         const rightText = [job.location, job.dates].filter(Boolean).join('  ');
         return `
