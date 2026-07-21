@@ -3101,32 +3101,38 @@ async function generateAiDocument(docType) { // 'resume' | 'cover'
     }
 
     let promptMessage = '';
+    let systemRolePrompt = '';
+
     if (docType === 'resume') {
-      promptMessage = `You are an expert executive resume writer. Your goal is to customize a high-impact, professional Resume tailored specifically for the position of "${title}" at "${company}".\n\n`;
+      systemRolePrompt = 'You are an AI resume generator. You generate ONLY a clean HTML Resume. You NEVER include a cover letter, application letter, or introductory salutation.';
+      promptMessage = `You are an expert executive resume writer. Your goal is to customize a high-impact, professional RESUME tailored specifically for the position of "${title}" at "${company}".\n\n`;
       if (masterDocText) {
         promptMessage += `MASTER BASE RESUME (Use as candidate background, experience, skills, and base template):\n"""\n${masterDocText}\n"""\n\n`;
       } else {
         promptMessage += `(Note: No Master Resume .docx file uploaded. Generate a realistic, highly tailored professional resume for this applicant.)\n\n`;
       }
       promptMessage += `${jobContext}\n\n`;
-      promptMessage += `REQUIREMENTS:\n`;
-      promptMessage += `1. Tailor the candidate's summary, skills, and bullet points specifically to match the candidate's fit for ${title} at ${company}.\n`;
-      promptMessage += `2. Highlight relevant technical/functional competencies and incorporate details from the notes/emails if relevant.\n`;
-      promptMessage += `3. Output clean, semantic HTML suitable for rich text display (use <h1>, <h2>, <h3>, <p>, <ul>, <li>, <strong>, <em> tags).\n`;
-      promptMessage += `4. Do NOT wrap output in markdown code fences (like \`\`\`html). Return ONLY the raw HTML body content. Do not include <html> or <body> tags.`;
+      promptMessage += `STRICT OUTPUT REQUIREMENTS:\n`;
+      promptMessage += `1. Generate ONLY the candidate's Resume. Do NOT generate or include a cover letter, application letter, email body, or introductory text/salutation.\n`;
+      promptMessage += `2. Tailor the candidate's professional summary, skills, and work experience bullet points specifically to match the fit for ${title} at ${company}.\n`;
+      promptMessage += `3. Highlight relevant technical/functional competencies and incorporate details from the job notes/emails if relevant.\n`;
+      promptMessage += `4. Output clean, semantic HTML suitable for rich text display (use <h1>, <h2>, <h3>, <p>, <ul>, <li>, <strong>, <em> tags).\n`;
+      promptMessage += `5. Do NOT wrap output in markdown code fences (like \`\`\`html). Return ONLY the raw HTML body content. Do not include <html> or <body> tags.`;
     } else {
-      promptMessage += `You are an expert career consultant. Your goal is to write a compelling, tailored Cover Letter for the position of "${title}" at "${company}".\n\n`;
+      systemRolePrompt = 'You are an AI cover letter generator. You generate ONLY a clean HTML Cover Letter. You NEVER include a resume, work history bullet points, or CV.';
+      promptMessage = `You are an expert career consultant. Your goal is to write a compelling, tailored COVER LETTER for the position of "${title}" at "${company}".\n\n`;
       if (masterDocText) {
         promptMessage += `MASTER BASE COVER LETTER (Use as style/tone guide and applicant details template):\n"""\n${masterDocText}\n"""\n\n`;
       } else {
         promptMessage += `(Note: No Master Cover Letter .docx file uploaded. Generate a compelling, professional cover letter tailored for this job.)\n\n`;
       }
       promptMessage += `${jobContext}\n\n`;
-      promptMessage += `REQUIREMENTS:\n`;
-      promptMessage += `1. Address the hiring team/manager at ${company} regarding the ${title} role.\n`;
-      promptMessage += `2. Highlight enthusiasm, key experience, and align with notes/emails from the application.\n`;
-      promptMessage += `3. Output clean, semantic HTML suitable for rich text display (use <h1>, <h2>, <p>, <ul>, <li>, <strong>, <em> tags).\n`;
-      promptMessage += `4. Do NOT wrap output in markdown code fences (like \`\`\`html). Return ONLY the raw HTML body content. Do not include <html> or <body> tags.`;
+      promptMessage += `STRICT OUTPUT REQUIREMENTS:\n`;
+      promptMessage += `1. Generate ONLY the Cover Letter. Do NOT generate or include a resume, work history bullet points, or full curriculum vitae.\n`;
+      promptMessage += `2. Address the hiring team/manager at ${company} regarding the ${title} role.\n`;
+      promptMessage += `3. Highlight enthusiasm, key experience, and align with notes/emails from the application.\n`;
+      promptMessage += `4. Output clean, semantic HTML suitable for rich text display (use <h1>, <h2>, <p>, <ul>, <li>, <strong>, <em> tags).\n`;
+      promptMessage += `5. Do NOT wrap output in markdown code fences (like \`\`\`html). Return ONLY the raw HTML body content. Do not include <html> or <body> tags.`;
     }
 
     // 3. Call Open WebUI Chat Completion API via proxy
@@ -3139,7 +3145,7 @@ async function generateAiDocument(docType) { // 'resume' | 'cover'
       body: JSON.stringify({
         model: selectedModel,
         messages: [
-          { role: 'system', content: 'You are an AI document generator that returns clean, semantic HTML for resumes and cover letters without markdown wrapping.' },
+          { role: 'system', content: systemRolePrompt },
           { role: 'user', content: promptMessage }
         ],
         stream: false
