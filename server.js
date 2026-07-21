@@ -1265,6 +1265,18 @@ function generateDocxBuffer(html) {
   });
 }
 
+function decodeHtmlEntities(str) {
+  if (!str) return '';
+  return str
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&nbsp;/g, ' ');
+}
+
 function escapeXml(str) {
   return (str || '')
     .replace(/&/g, '&amp;')
@@ -1313,7 +1325,7 @@ function htmlToOpenXmlBody(html) {
   });
 
   if (!xml) {
-    xml = `<w:p><w:r><w:t>${escapeXml(cleanHtml)}</w:t></w:r></w:p>`;
+    xml = `<w:p><w:r><w:t>${escapeXml(decodeHtmlEntities(cleanHtml))}</w:t></w:r></w:p>`;
   }
 
   return xml;
@@ -1335,7 +1347,7 @@ function parseInlineRuns(text, isH1, isH2, isH3) {
     if (lower === '<u>') { isUnderline = true; return; }
     if (lower === '</u>') { isUnderline = false; return; }
 
-    const plainText = part.replace(/<[^>]*>/g, '');
+    const plainText = decodeHtmlEntities(part.replace(/<[^>]*>/g, ''));
     if (!plainText) return;
 
     let rPr = '<w:rPr>';
