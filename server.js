@@ -7,6 +7,7 @@ const archiver = require('archiver');
 const unzipper = require('unzipper');
 const multer  = require('multer');
 const fetch = require('node-fetch');
+const mammoth = require('mammoth');
 const http = require('http');
 const https = require('https');
 
@@ -633,7 +634,131 @@ app.delete('/api/master-docs/:type', (req, res) => {
   res.json({ success: true, docType: type });
 });
 
-// ── Chat Proxy ───────────────────────────────────────────────────────────────
+// GET /api/master-docs/parse-sections/:type  — parse master .docx into structured skeleton JSON
+app.get('/api/master-docs/parse-sections/:type', async (req, res) => {
+  const isCover = (req.params.type || '').toLowerCase().includes('cover');
+  const fileName = isCover ? 'master_cover_letter.docx' : 'master_resume.docx';
+  const filePath = path.join(MASTER_DOCS_DIR, fileName);
+
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: 'No master document found. Please upload a master resume first.' });
+  }
+
+  try {
+    const docxBuffer = fs.readFileSync(filePath);
+    const { value: html } = await mammoth.convertToHtml({ buffer: docxBuffer });
+
+    // ── Helper: strip all HTML tags from a string ──────────────────────────
+    const stripTags = (s) => (s || '').replace(/<[^>]*>/g, '').trim();
+
+    // ── Split HTML by <h2> boundaries ─────────────────────────────────────
+    const sectionSplitter = /(?=<h2[^>]*>)/gi;
+    const rawSections = html.split(sectionSplitter).filter(s => s.trim());
+
+    const sections = {};
+
+    // First chunk = header region (name + contact) before any <h2>
+    const headerChunk = rawSections[0] || '';
+    const h1Match = headerChunk.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+    sections.name = h1Match ? stripTags(h1Match[1]) : '';
+
+    // Contact line: first <p> after <h1> that contains | or @ 
+    const contactMatch = headerChunk.match(/<h1[^>]*>[\s\S]*?<\/h1>\s*(<p[^>]*>[\s\S]*?<\/p>)/i);
+    sections.contact = contactMatch ? stripTags(contactMatch[1]) : '';
+
+    // ── Process named <h2> sections ────────────────────────────────────────
+    sections.experience = [];
+
+    rawSections.forEach(chunk => {
+      const h2Match = chunk.match(/^<h2[^>]*>([\s\S]*?)<\/h2>/i);
+      if (!h2Match) return;
+      const sectionTitle = stripTags(h2Match[1]).toUpperCase().trim();
+      const sectionBody = chunk.replace(/^<h2[^>]*>[\s\S]*?<\/h2>/i, '').trim();
+
+      if (sectionTitle.includes('SUMMARY')) {
+        const pMatch = sectionBody.match(/<p[^>]*>([\s\S]*?)<\/p>/i);
+        sections.summary = pMatch ? stripTags(pMatch[1]) : stripTags(sectionBody);
+
+      } else if (sectionTitle.includes('COMPETENCIES') || sectionTitle.includes('SKILLS')) {
+        sections.competenciesHtml = sectionBody;
+
+      } else if (sectionTitle.includes('EXPERIENCE')) {
+        // Parse each job block — split by job-header divs or <p> pairs containing right-tab patterns
+        // Strategy: split on every <p><strong> or <div class="job-header"> pattern
+        const jobBlocks = sectionBody.split(/(?=<p[^>]*>\s*<strong|<div[^>]*class=["']job-header["'])/gi).filter(b => b.trim());
+        
+        jobBlocks.forEach(block => {
+          // Extract job title and right-side text (location/dates) from the header line
+          // Mammoth renders tab-separated text as a single <p> with the text split around a tab char or a span
+          const headerLine = block.match(/<p[^>]*>([\s\S]*?)<\/p>/i);
+          if (!headerLine) return;
+
+          const headerText = stripTags(headerLine[1]);
+          if (!headerText || headerText.length < 3) return;
+
+          // Try to parse "Job Title   Location | Dates" or "Job Title   Dates"
+          // Mammoth preserves tab characters as \t in text nodes
+          const parts = headerText.split(/\t|  {2,}/);
+          const jobTitle = (parts[0] || '').trim();
+          const rightPart = (parts[1] || '').trim();
+
+          if (!jobTitle) return;
+
+          // Sub-line: company / department (em or italic line following header)
+          const subMatch = block.match(/<p[^>]*>\s*(?:<em>|<i>)([\s\S]*?)(?:<\/em>|<\/i>)\s*<\/p>/i);
+          const subText = subMatch ? stripTags(subMatch[1]) : '';
+
+          // Bullets
+          const bulletMatches = [...block.matchAll(/<li[^>]*>([\s\S]*?)<\/li>/gi)];
+          const masterBullets = bulletMatches.map(m => stripTags(m[1]).trim()).filter(Boolean);
+
+          // Parse location/dates out of rightPart — e.g. "Kansas City, MO  April 2017 – June 2026"
+          const datePattern = /([A-Za-z]+ \d{4}\s*[-–]\s*(?:[A-Za-z]+ \d{4}|Present))/i;
+          const dateMatch = rightPart.match(datePattern);
+          const dates = dateMatch ? dateMatch[1].trim() : rightPart;
+          const location = rightPart.replace(datePattern, '').replace(/[|\-–,]+$/, '').trim();
+
+          // Company — usually embedded in subText after an em dash or dash
+          const companyMatch = subText.match(/[-–]\s*(.+)$/);
+          const company = companyMatch ? companyMatch[1].trim() : '';
+          const sub = companyMatch ? subText.replace(/[-–]\s*.+$/, '').trim() : subText;
+
+          sections.experience.push({
+            key: `${jobTitle} @ ${company || jobTitle}`,
+            title: jobTitle,
+            company,
+            sub,
+            location,
+            dates,
+            masterBullets
+          });
+        });
+
+      } else if (sectionTitle.includes('PROJECT')) {
+        sections.projectsHtml = sectionBody;
+
+      } else if (sectionTitle.includes('EDUCATION')) {
+        sections.educationHtml = sectionBody;
+      }
+    });
+
+    res.json({
+      name: sections.name || '',
+      contact: sections.contact || '',
+      summary: sections.summary || '',
+      competenciesHtml: sections.competenciesHtml || '',
+      experience: sections.experience || [],
+      projectsHtml: sections.projectsHtml || '',
+      educationHtml: sections.educationHtml || ''
+    });
+
+  } catch (err) {
+    console.error('[parse-sections] Error:', err.message);
+    res.status(500).json({ error: 'Failed to parse master document: ' + err.message });
+  }
+});
+
+
 
 // ── Settings ───────────────────────────────────────────────────────────────
 

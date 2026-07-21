@@ -3087,163 +3087,281 @@ async function generateAiDocument(docType) { // 'resume' | 'cover'
   try {
     toast(`Compiling context and generating customized ${label}...`, 'info');
 
-    // 1. Extract Master Base .docx document HTML if available
-    let masterDocText = '';
-    const masterEndpoint = docType === 'resume' ? '/api/master-docs/download/resume' : '/api/master-docs/download/coverLetter';
-    try {
-      const res = await fetch(masterEndpoint);
-      if (res.ok) {
-        const arrayBuffer = await res.arrayBuffer();
-        if (typeof mammoth !== 'undefined') {
-          const result = await mammoth.convertToHtml({ arrayBuffer: arrayBuffer });
-          masterDocText = (result.value || '').trim();
-        }
-      }
-    } catch (e) {
-      console.warn('[AI Gen] Could not load master doc:', e.message);
-    }
+    // ── Load AI settings ────────────────────────────────────────────────────
+    const chatSettings = JSON.parse(localStorage.getItem('chatCopilotSettings') || '{}');
+    const apiKey       = chatSettings.apiKey || '';
+    const selectedModel = chatSettings.modelSelection || '';
 
-    // 2. Gather Job Task Details (EXCLUDING Documents tab: job.resume and job.coverLetter)
-    const title = (document.getElementById('editTitle')?.value || job.title || '').trim();
-    const company = (document.getElementById('editCompany')?.value || job.company || '').trim();
-    const status = (document.getElementById('editStatus')?.value || job.status || 'applied');
+    // ── Gather Job context ──────────────────────────────────────────────────
+    const title       = (document.getElementById('editTitle')?.value || job.title || '').trim();
+    const company     = (document.getElementById('editCompany')?.value || job.company || '').trim();
+    const status      = (document.getElementById('editStatus')?.value || job.status || 'applied');
     const dateApplied = (document.getElementById('editDate')?.value || job.dateApplied || '');
-    const url = (document.getElementById('editUrl')?.value || job.url || '').trim();
+    const url         = (document.getElementById('editUrl')?.value || job.url || '').trim();
 
-    let jobContext = `JOB TASK INFORMATION:\n`;
-    jobContext += `- Target Position Title: ${title}\n`;
-    jobContext += `- Company Name: ${company}\n`;
-    jobContext += `- Application Status: ${status}\n`;
+    let jobContext = `JOB DETAILS:\n`;
+    jobContext += `- Target Position: ${title}\n`;
+    jobContext += `- Company: ${company}\n`;
+    jobContext += `- Status: ${status}\n`;
     if (dateApplied) jobContext += `- Date Applied: ${dateApplied}\n`;
-    if (url) jobContext += `- Job Listing URL: ${url}\n`;
-
+    if (url)         jobContext += `- Job Listing URL: ${url}\n`;
     if (Array.isArray(job.notes) && job.notes.length > 0) {
-      jobContext += `\nUPDATE LOG & NOTES FOR THIS JOB:\n`;
-      job.notes.forEach((n, idx) => {
-        jobContext += `[Note ${idx + 1}] (${formatDateStr(n.timestamp)}): ${n.text}\n`;
-      });
+      jobContext += `\nNOTES:\n`;
+      job.notes.forEach((n, i) => { jobContext += `[${i+1}] ${n.text}\n`; });
     }
-
     if (Array.isArray(job.emails) && job.emails.length > 0) {
-      jobContext += `\nATTACHED EMAILS FOR THIS JOB:\n`;
-      job.emails.forEach((em, idx) => {
-        jobContext += `[Email ${idx + 1}] From: ${em.from} | Subject: ${em.subject} | Date: ${em.date}\n`;
-        if (em.body) {
-          const snippet = em.body.length > 500 ? em.body.substring(0, 500) + '...' : em.body;
-          jobContext += `  Body snippet: ${snippet}\n`;
-        }
+      jobContext += `\nEMAILS:\n`;
+      job.emails.forEach((em, i) => {
+        const snippet = (em.body || '').substring(0, 400);
+        jobContext += `[${i+1}] From: ${em.from} | Subject: ${em.subject}\n  ${snippet}\n`;
       });
     }
 
-    let promptMessage = '';
-    let systemRolePrompt = '';
-
+    // ══════════════════════════════════════════════════════════════════════
+    //  RESUME — Template Injection Pipeline
+    // ══════════════════════════════════════════════════════════════════════
     if (docType === 'resume') {
-      systemRolePrompt = 'You are an AI resume generator. You generate ONLY a clean HTML Resume matching the master resume structure. You NEVER include a cover letter or introductory text. You NEVER change previous job titles or fabricate unmentioned experience.';
-      promptMessage = `You are an expert executive resume writer. Your goal is to customize a high-impact, professional RESUME tailored specifically for the position of "${title}" at "${company}".\n\n`;
-      if (masterDocText) {
-        promptMessage += `MASTER BASE RESUME HTML TEMPLATE & CONTENT (Match this structure, bullet format, and background):\n"""\n${masterDocText}\n"""\n\n`;
-      } else {
-        promptMessage += `(Note: No Master Resume .docx file uploaded. Generate a realistic, highly tailored professional resume for this applicant.)\n\n`;
+
+      // Step 1 — Fetch parsed skeleton from master resume
+      toast('Parsing master resume structure...', 'info');
+      const skelRes = await fetch('/api/master-docs/parse-sections/resume');
+      if (!skelRes.ok) {
+        const skelErr = await skelRes.json().catch(() => ({}));
+        throw new Error(skelErr.error || 'No master resume uploaded. Please upload your master resume in Settings → Documents first.');
       }
-      promptMessage += `${jobContext}\n\n`;
-      promptMessage += `STRICT OUTPUT REQUIREMENTS & FORMATTING RULES:\n`;
-      promptMessage += `1. Generate ONLY the candidate's Resume. Do NOT generate or include a cover letter, application letter, email body, or introductory text/salutation.\n`;
-      promptMessage += `2. DO NOT CHANGE OR ALTER PREVIOUS JOB TITLES. Keep all actual job titles EXACTLY as listed in the candidate's master background history. Do NOT alter past job titles to better match the target role.\n`;
-      promptMessage += `3. DO NOT FABRICATE OR ADD UNMENTIONED EXPERIENCE. Do not invent company names, technologies, tools, or achievements not explicitly stated in the candidate's master resume or job notes.\n`;
-      promptMessage += `4. STRUCTURE & HTML LAYOUT RULES (MATCH MASTER RESUME):\n`;
-      promptMessage += `   - Name: In <h1> centered at the top.\n`;
-      promptMessage += `   - Contact Info: Single <p> line centered under name with location, phone, email, and links separated by " | ".\n`;
-      promptMessage += `   - Main Section Titles: Use UPPERCASE <h2> headers for sections (e.g. <h2>PROFESSIONAL SUMMARY</h2>, <h2>CORE COMPETENCIES</h2>, <h2>PROFESSIONAL EXPERIENCE</h2>, <h2>TECHNICAL PROJECTS</h2>, <h2>EDUCATION</h2>).\n`;
-      promptMessage += `   - Job Entries: For every past job, output:\n`;
-      promptMessage += `       <div class="job-header"><span>Job Title</span><span>Location | Dates</span></div>\n`;
-      promptMessage += `       <div class="job-sub"><em>(Department/Ops) – Company Name</em></div>\n`;
-      promptMessage += `   - Work Achievements: Use <ul> and <li> for achievements. Start each bullet point with a bold title (e.g. <li><strong>Key Achievement Title:</strong> Description...</li>).\n`;
-      promptMessage += `   - Skills/Competencies: Use a 3-column HTML <table> with <th> headers for categories.\n`;
-      promptMessage += `   - Education & Projects: Place degree/project title in <strong> and institution/subtext in <em>.\n`;
-      promptMessage += `5. Output clean, semantic HTML body content (use <h1>, <h2>, <h3>, <p>, <ul>, <li>, <table>, <tr>, <th>, <td>, <strong>, <em> tags).\n`;
-      promptMessage += `6. Do NOT wrap output in markdown code fences (like \`\`\`html). Return ONLY the raw HTML content. Do not include <html> or <body> tags.`;
+      const skeleton = await skelRes.json();
+
+      if (!skeleton.name && skeleton.experience.length === 0) {
+        throw new Error('Could not read the master resume structure. Please try re-uploading your master resume.');
+      }
+
+      // Step 2 — Build minimal AI prompt (JSON output only)
+      const roleList = skeleton.experience.map(j =>
+        `  - ${j.title} at ${j.company} (${j.dates})`
+      ).join('\n');
+
+      const bulletContext = skeleton.experience.map(j => {
+        const bullets = (j.masterBullets || []).slice(0, 4).map(b => `    • ${b}`).join('\n');
+        return `  ${j.key}:\n${bullets}`;
+      }).join('\n');
+
+      const competencyCats = (() => {
+        // Try to extract categories from the competencies HTML
+        const catMatches = [...(skeleton.competenciesHtml || '').matchAll(/<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/gi)];
+        const cats = catMatches.map(m => m[1].replace(/<[^>]*>/g, '').trim()).filter(c => c && c.length > 2);
+        if (cats.length >= 3) return cats.slice(0, 3).map(c => `"${c}"`).join(', ');
+        return '"Category 1", "Category 2", "Category 3"';
+      })();
+
+      const jobBulletsTemplate = skeleton.experience.map(j =>
+        `    "${j.key}": ["Bullet 1 with bold title: detail...", "Bullet 2...", "..."]`
+      ).join(',\n');
+
+      const systemRolePrompt = 'You are a professional resume content writer. You return ONLY valid JSON with no markdown, no explanation, no code fences. Every value is a string or array of strings.';
+
+      const promptMessage =
+`Tailor the resume content for the position: "${title}" at "${company}".
+
+CANDIDATE BACKGROUND — DO NOT CHANGE JOB TITLES OR INVENT EXPERIENCE:
+Name: ${skeleton.name}
+Past Roles:
+${roleList}
+
+Master Professional Summary (tailor this for the target role):
+  ${skeleton.summary}
+
+Master Bullet Points per Role (tailor and prioritize; keep 4-6 per job):
+${bulletContext}
+
+${jobContext}
+
+Return ONLY this JSON object (no other text, no markdown fences):
+{
+  "summary": "3-5 sentence tailored professional summary paragraph.",
+  "competencies": [
+    {"category": ${competencyCats.split(', ')[0] || '"Category 1"'}, "skills": ["Skill A", "Skill B", "Skill C", "Skill D"]},
+    {"category": ${competencyCats.split(', ')[1] || '"Category 2"'}, "skills": ["Skill A", "Skill B", "Skill C", "Skill D"]},
+    {"category": ${competencyCats.split(', ')[2] || '"Category 3"'}, "skills": ["Skill A", "Skill B", "Skill C", "Skill D"]}
+  ],
+  "jobBullets": {
+${jobBulletsTemplate}
+  }
+}`;
+
+      // Step 3 — Call AI
+      toast('Sending to AI for content tailoring...', 'info');
+      const response = await fetch('/api/chat-proxy/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': apiKey ? `Bearer ${apiKey}` : ''
+        },
+        body: JSON.stringify({
+          model: selectedModel,
+          messages: [
+            { role: 'system', content: systemRolePrompt },
+            { role: 'user',   content: promptMessage }
+          ],
+          stream: false
+        })
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(parseOpenWebUiError(errText, response.status));
+      }
+
+      const data = await response.json();
+      let rawAi = data.choices?.[0]?.message?.content || '';
+
+      // Step 4 — Parse AI JSON with fallback for markdown fences
+      rawAi = rawAi
+        .replace(/^```json\s*/i, '')
+        .replace(/^```\s*/,      '')
+        .replace(/```\s*$/,      '')
+        .trim();
+
+      // Extract the outermost JSON object in case the AI prepended text
+      const jsonStart = rawAi.indexOf('{');
+      const jsonEnd   = rawAi.lastIndexOf('}');
+      if (jsonStart !== -1 && jsonEnd !== -1) {
+        rawAi = rawAi.substring(jsonStart, jsonEnd + 1);
+      }
+
+      let aiData;
+      try {
+        aiData = JSON.parse(rawAi);
+      } catch (parseErr) {
+        console.error('[AI JSON Parse Error]', parseErr, rawAi.substring(0, 300));
+        throw new Error('AI returned an invalid response. Please try generating again.');
+      }
+
+      // Step 5 — Assemble final HTML from locked skeleton + AI content
+      toast('Assembling final resume...', 'info');
+
+      // Build competencies table from AI array
+      const compRows = (aiData.competencies || []).map(cat => {
+        const skillItems = (cat.skills || []).map(s => `<li>${s}</li>`).join('');
+        return `<tr><th>${cat.category || ''}</th></tr><tr><td><ul>${skillItems}</ul></td></tr>`;
+      });
+      const compTable = `<table class="competencies-table"><tbody>${compRows.join('')}</tbody></table>`;
+
+      // Build experience section from locked skeleton + AI bullets
+      const expHtml = skeleton.experience.map(job => {
+        const bullets = (aiData.jobBullets?.[job.key] || job.masterBullets || []);
+        const liItems = bullets.map(b => `<li>${b}</li>`).join('');
+        const subLine = [job.sub, job.company].filter(Boolean).join(' – ');
+        const rightText = [job.location, job.dates].filter(Boolean).join('  ');
+        return `
+          <div class="job-header"><span>${job.title}</span><span>${rightText}</span></div>
+          ${subLine ? `<div class="job-sub"><em>${subLine}</em></div>` : ''}
+          <ul>${liItems}</ul>`;
+      }).join('\n');
+
+      // Assemble full resume HTML
+      const finalHtml = `
+<h1>${skeleton.name}</h1>
+<p class="contact">${skeleton.contact}</p>
+<h2>PROFESSIONAL SUMMARY</h2>
+<p>${aiData.summary || skeleton.summary}</p>
+<h2>CORE COMPETENCIES</h2>
+${compTable}
+<h2>PROFESSIONAL EXPERIENCE</h2>
+${expHtml}
+${skeleton.projectsHtml ? `<h2>TECHNICAL PROJECTS</h2>\n${skeleton.projectsHtml}` : ''}
+${skeleton.educationHtml ? `<h2>EDUCATION</h2>\n${skeleton.educationHtml}` : ''}`.trim();
+
+      // Save & display
+      job.resume = finalHtml;
+      const editor = document.getElementById('resumeEditor');
+      if (editor) editor.innerHTML = finalHtml;
+      const hint = document.getElementById('resumeSavedHint');
+      if (hint) hint.textContent = 'AI Generated & Saved';
+
+      switchRightTab('docs');
+      switchDocSubTab('resume');
+      saveEditJob();
+      toast(`✨ Customized Resume generated and saved to Documents tab!`, 'success');
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  COVER LETTER — Full Generation (unchanged)
+    // ══════════════════════════════════════════════════════════════════════
     } else {
-      systemRolePrompt = 'You are an AI cover letter generator. You generate ONLY a clean HTML Cover Letter. You NEVER include a resume, work history bullet points, or CV. You NEVER change job titles or fabricate unmentioned experience.';
-      promptMessage = `You are an expert career consultant. Your goal is to write a compelling, tailored COVER LETTER for the position of "${title}" at "${company}".\n\n`;
+
+      // Load master cover letter HTML (if available)
+      let masterDocText = '';
+      try {
+        const res = await fetch('/api/master-docs/download/coverLetter');
+        if (res.ok) {
+          const arrayBuffer = await res.arrayBuffer();
+          if (typeof mammoth !== 'undefined') {
+            const result = await mammoth.convertToHtml({ arrayBuffer: arrayBuffer });
+            masterDocText = (result.value || '').trim();
+          }
+        }
+      } catch (e) {
+        console.warn('[AI Gen] Could not load master cover letter:', e.message);
+      }
+
+      const systemRolePrompt = 'You are an AI cover letter generator. You generate ONLY a clean HTML Cover Letter. You NEVER include a resume or work history bullet points. You NEVER change job titles or fabricate unmentioned experience.';
+      let promptMessage = `You are an expert career consultant. Write a compelling, tailored COVER LETTER for the position of "${title}" at "${company}".\n\n`;
       if (masterDocText) {
-        promptMessage += `MASTER BASE COVER LETTER HTML TEMPLATE (Use as style/tone guide and applicant details template):\n"""\n${masterDocText}\n"""\n\n`;
-      } else {
-        promptMessage += `(Note: No Master Cover Letter .docx file uploaded. Generate a compelling, professional cover letter tailored for this job.)\n\n`;
+        promptMessage += `MASTER COVER LETTER TEMPLATE (style/tone guide):\n"""\n${masterDocText}\n"""\n\n`;
       }
       promptMessage += `${jobContext}\n\n`;
       promptMessage += `STRICT OUTPUT REQUIREMENTS:\n`;
-      promptMessage += `1. Generate ONLY the Cover Letter. Do NOT generate or include a resume, work history bullet points, or full curriculum vitae.\n`;
-      promptMessage += `2. DO NOT ALTER PREVIOUS JOB TITLES OR FABRICATE EXPERIENCE. Stick strictly to actual past job titles and verified experience from the applicant's background.\n`;
-      promptMessage += `3. Address the hiring team/manager at ${company} regarding the ${title} role.\n`;
-      promptMessage += `4. Highlight enthusiasm, key experience, and align with notes/emails from the application.\n`;
-      promptMessage += `5. Output clean, semantic HTML suitable for rich text display (use <h1>, <h2>, <p>, <ul>, <li>, <strong>, <em> tags).\n`;
-      promptMessage += `6. Do NOT wrap output in markdown code fences (like \`\`\`html). Return ONLY the raw HTML body content. Do not include <html> or <body> tags.`;
-    }
+      promptMessage += `1. Generate ONLY the Cover Letter. Do NOT include a resume or work history.\n`;
+      promptMessage += `2. DO NOT ALTER PREVIOUS JOB TITLES OR FABRICATE EXPERIENCE.\n`;
+      promptMessage += `3. Address the hiring team at ${company} regarding the ${title} role.\n`;
+      promptMessage += `4. Output clean semantic HTML (use <h1>, <h2>, <p>, <ul>, <li>, <strong>, <em>).\n`;
+      promptMessage += `5. Do NOT wrap in markdown fences. Return ONLY raw HTML body content.`;
 
-    // 3. Call Open WebUI Chat Completion API via proxy
-    const response = await fetch('/api/chat-proxy/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': apiKey ? `Bearer ${apiKey}` : ''
-      },
-      body: JSON.stringify({
-        model: selectedModel,
-        messages: [
-          { role: 'system', content: systemRolePrompt },
-          { role: 'user', content: promptMessage }
-        ],
-        stream: false
-      })
-    });
+      const response = await fetch('/api/chat-proxy/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': apiKey ? `Bearer ${apiKey}` : ''
+        },
+        body: JSON.stringify({
+          model: selectedModel,
+          messages: [
+            { role: 'system', content: systemRolePrompt },
+            { role: 'user',   content: promptMessage }
+          ],
+          stream: false
+        })
+      });
 
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(parseOpenWebUiError(errText, response.status));
-    }
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(parseOpenWebUiError(errText, response.status));
+      }
 
-    const data = await response.json();
-    let generatedContent = data.choices?.[0]?.message?.content || '';
+      const data = await response.json();
+      let generatedContent = data.choices?.[0]?.message?.content || '';
+      generatedContent = generatedContent
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+        .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, '')
+        .replace(/<!--[\s\S]*?-->/g, '')
+        .replace(/^```html\s*/i, '')
+        .replace(/^```\s*/, '')
+        .replace(/```\s*$/, '')
+        .trim();
 
-    // Strip style tags, script tags, head tags, comments, and markdown code fences
-    generatedContent = generatedContent
-      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-      .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, '')
-      .replace(/<!--[\s\S]*?-->/g, '')
-      .replace(/^```html\s*/i, '')
-      .replace(/^```\s*/, '')
-      .replace(/```\s*$/, '')
-      .trim();
+      if (!generatedContent) throw new Error('AI returned an empty document.');
 
-    if (!generatedContent) {
-      throw new Error('AI returned an empty document.');
-    }
-
-    // 4. Save to task and update Documents Tab
-    if (docType === 'resume') {
-      job.resume = generatedContent;
-      const editor = document.getElementById('resumeEditor');
-      if (editor) editor.innerHTML = generatedContent;
-      const hint = document.getElementById('resumeSavedHint');
-      if (hint) hint.textContent = 'AI Generated & Saved';
-    } else {
       job.coverLetter = generatedContent;
       const editor = document.getElementById('coverEditor');
       if (editor) editor.innerHTML = generatedContent;
       const hint = document.getElementById('coverSavedHint');
       if (hint) hint.textContent = 'AI Generated & Saved';
+
+      switchRightTab('docs');
+      switchDocSubTab('cover');
+      saveEditJob();
+      toast(`✨ Customized Cover Letter generated and saved to Documents tab!`, 'success');
     }
-
-    // Switch to Documents tab and target subtab
-    switchRightTab('docs');
-    switchDocSubTab(docType === 'resume' ? 'resume' : 'cover');
-
-    // Persist changes
-    saveEditJob();
-
-    toast(`✨ Customized ${label} generated and saved to Documents tab!`, 'success');
 
   } catch (err) {
     console.error(`[AI Gen Error] ${label}:`, err);
