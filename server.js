@@ -634,6 +634,21 @@ app.delete('/api/master-docs/:type', (req, res) => {
   res.json({ success: true, docType: type });
 });
 
+// GET /api/master-docs/debug-html/:type  — returns raw mammoth HTML for debugging
+app.get('/api/master-docs/debug-html/:type', async (req, res) => {
+  const isCover = (req.params.type || '').toLowerCase().includes('cover');
+  const fileName = isCover ? 'master_cover_letter.docx' : 'master_resume.docx';
+  const filePath = path.join(MASTER_DOCS_DIR, fileName);
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
+  try {
+    const docxBuffer = fs.readFileSync(filePath);
+    const { value: html } = await mammoth.convertToHtml({ buffer: docxBuffer });
+    res.type('text/plain').send(html);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/master-docs/parse-sections/:type  — parse master .docx into structured skeleton JSON
 app.get('/api/master-docs/parse-sections/:type', async (req, res) => {
   const isCover = (req.params.type || '').toLowerCase().includes('cover');
@@ -648,27 +663,68 @@ app.get('/api/master-docs/parse-sections/:type', async (req, res) => {
     const docxBuffer = fs.readFileSync(filePath);
     const { value: html } = await mammoth.convertToHtml({ buffer: docxBuffer });
 
-    // ── Helper: strip all HTML tags from a string ──────────────────────────
-    const stripTags = (s) => (s || '').replace(/<[^>]*>/g, '').trim();
+    // ── Helpers ────────────────────────────────────────────────────────────
+    const stripTags = (s) => (s || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 
-    // ── Split HTML by <h2> boundaries ─────────────────────────────────────
-    const sectionSplitter = /(?=<h2[^>]*>)/gi;
-    const rawSections = html.split(sectionSplitter).filter(s => s.trim());
+    // Check if a string looks like an all-caps or title-case section header
+    const KNOWN_SECTIONS = ['SUMMARY', 'COMPETENCIES', 'SKILLS', 'EXPERIENCE', 'PROJECT', 'EDUCATION'];
+    const isSectionHeader = (text) => {
+      const upper = text.toUpperCase().trim();
+      return KNOWN_SECTIONS.some(s => upper.includes(s));
+    };
 
-    const sections = {};
+    // ── Normalize: find section boundaries regardless of heading style ─────
+    // Strategy: replace <p><strong>SECTION TITLE</strong></p> with <h2>SECTION TITLE</h2>
+    // so the rest of the parser works the same way regardless of Word style used.
+    let normalizedHtml = html
+      // Handle: <p><strong>SECTION NAME</strong></p>
+      .replace(/<p[^>]*>\s*<strong[^>]*>([\s\S]*?)<\/strong>\s*<\/p>/gi, (match, inner) => {
+        const text = inner.replace(/<[^>]*>/g, '').trim();
+        if (isSectionHeader(text)) return `<h2>${text}</h2>`;
+        return match;
+      })
+      // Handle: <p><b>SECTION NAME</b></p>
+      .replace(/<p[^>]*>\s*<b[^>]*>([\s\S]*?)<\/b>\s*<\/p>/gi, (match, inner) => {
+        const text = inner.replace(/<[^>]*>/g, '').trim();
+        if (isSectionHeader(text)) return `<h2>${text}</h2>`;
+        return match;
+      });
 
-    // First chunk = header region (name + contact) before any <h2>
-    const headerChunk = rawSections[0] || '';
+    // ── Split on h1 and h2 boundaries ─────────────────────────────────────
+    const sectionSplitter = /(?=<h[12][^>]*>)/gi;
+    const rawSections = normalizedHtml.split(sectionSplitter).filter(s => s.trim());
+
+    const sections = { experience: [] };
+
+    // ── Header region: name + contact ─────────────────────────────────────
+    const headerChunk = rawSections[0] || normalizedHtml;
+
+    // Name: prefer <h1>, fall back to first <p><strong> or large text at top
     const h1Match = headerChunk.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
-    sections.name = h1Match ? stripTags(h1Match[1]) : '';
+    if (h1Match) {
+      sections.name = stripTags(h1Match[1]);
+    } else {
+      // Fall back: first bold/strong paragraph at top of document
+      const boldNameMatch = headerChunk.match(/<(?:p|div)[^>]*>\s*<(?:strong|b)[^>]*>([\s\S]*?)<\/(?:strong|b)>/i);
+      sections.name = boldNameMatch ? stripTags(boldNameMatch[1]) : '';
+    }
 
-    // Contact line: first <p> after <h1> that contains | or @ 
-    const contactMatch = headerChunk.match(/<h1[^>]*>[\s\S]*?<\/h1>\s*(<p[^>]*>[\s\S]*?<\/p>)/i);
-    sections.contact = contactMatch ? stripTags(contactMatch[1]) : '';
+    // Contact: paragraph containing | or @ near the top
+    const allParas = [...headerChunk.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/gi)];
+    for (const m of allParas) {
+      const text = stripTags(m[1]);
+      if (text.includes('|') || text.includes('@') || text.match(/\(\d{3}\)/)) {
+        sections.contact = text;
+        break;
+      }
+    }
+    if (!sections.contact && sections.name) {
+      // Second paragraph after name often contains contact info
+      const pAfterName = allParas[1];
+      if (pAfterName) sections.contact = stripTags(pAfterName[1]);
+    }
 
-    // ── Process named <h2> sections ────────────────────────────────────────
-    sections.experience = [];
-
+    // ── Process h2 sections ────────────────────────────────────────────────
     rawSections.forEach(chunk => {
       const h2Match = chunk.match(/^<h2[^>]*>([\s\S]*?)<\/h2>/i);
       if (!h2Match) return;
@@ -676,63 +732,15 @@ app.get('/api/master-docs/parse-sections/:type', async (req, res) => {
       const sectionBody = chunk.replace(/^<h2[^>]*>[\s\S]*?<\/h2>/i, '').trim();
 
       if (sectionTitle.includes('SUMMARY')) {
-        const pMatch = sectionBody.match(/<p[^>]*>([\s\S]*?)<\/p>/i);
-        sections.summary = pMatch ? stripTags(pMatch[1]) : stripTags(sectionBody);
+        // Take all <p> text in the summary section
+        const pMatches = [...sectionBody.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/gi)];
+        sections.summary = pMatches.map(m => stripTags(m[1])).filter(Boolean).join(' ');
 
       } else if (sectionTitle.includes('COMPETENCIES') || sectionTitle.includes('SKILLS')) {
         sections.competenciesHtml = sectionBody;
 
       } else if (sectionTitle.includes('EXPERIENCE')) {
-        // Parse each job block — split by job-header divs or <p> pairs containing right-tab patterns
-        // Strategy: split on every <p><strong> or <div class="job-header"> pattern
-        const jobBlocks = sectionBody.split(/(?=<p[^>]*>\s*<strong|<div[^>]*class=["']job-header["'])/gi).filter(b => b.trim());
-        
-        jobBlocks.forEach(block => {
-          // Extract job title and right-side text (location/dates) from the header line
-          // Mammoth renders tab-separated text as a single <p> with the text split around a tab char or a span
-          const headerLine = block.match(/<p[^>]*>([\s\S]*?)<\/p>/i);
-          if (!headerLine) return;
-
-          const headerText = stripTags(headerLine[1]);
-          if (!headerText || headerText.length < 3) return;
-
-          // Try to parse "Job Title   Location | Dates" or "Job Title   Dates"
-          // Mammoth preserves tab characters as \t in text nodes
-          const parts = headerText.split(/\t|  {2,}/);
-          const jobTitle = (parts[0] || '').trim();
-          const rightPart = (parts[1] || '').trim();
-
-          if (!jobTitle) return;
-
-          // Sub-line: company / department (em or italic line following header)
-          const subMatch = block.match(/<p[^>]*>\s*(?:<em>|<i>)([\s\S]*?)(?:<\/em>|<\/i>)\s*<\/p>/i);
-          const subText = subMatch ? stripTags(subMatch[1]) : '';
-
-          // Bullets
-          const bulletMatches = [...block.matchAll(/<li[^>]*>([\s\S]*?)<\/li>/gi)];
-          const masterBullets = bulletMatches.map(m => stripTags(m[1]).trim()).filter(Boolean);
-
-          // Parse location/dates out of rightPart — e.g. "Kansas City, MO  April 2017 – June 2026"
-          const datePattern = /([A-Za-z]+ \d{4}\s*[-–]\s*(?:[A-Za-z]+ \d{4}|Present))/i;
-          const dateMatch = rightPart.match(datePattern);
-          const dates = dateMatch ? dateMatch[1].trim() : rightPart;
-          const location = rightPart.replace(datePattern, '').replace(/[|\-–,]+$/, '').trim();
-
-          // Company — usually embedded in subText after an em dash or dash
-          const companyMatch = subText.match(/[-–]\s*(.+)$/);
-          const company = companyMatch ? companyMatch[1].trim() : '';
-          const sub = companyMatch ? subText.replace(/[-–]\s*.+$/, '').trim() : subText;
-
-          sections.experience.push({
-            key: `${jobTitle} @ ${company || jobTitle}`,
-            title: jobTitle,
-            company,
-            sub,
-            location,
-            dates,
-            masterBullets
-          });
-        });
+        parseExperienceSection(sectionBody, sections, stripTags);
 
       } else if (sectionTitle.includes('PROJECT')) {
         sections.projectsHtml = sectionBody;
@@ -741,6 +749,20 @@ app.get('/api/master-docs/parse-sections/:type', async (req, res) => {
         sections.educationHtml = sectionBody;
       }
     });
+
+    // ── Fallback: if no experience parsed, try to extract from full HTML ──
+    if (sections.experience.length === 0) {
+      parseExperienceSection(normalizedHtml, sections, stripTags);
+    }
+
+    // ── Final validation ───────────────────────────────────────────────────
+    const hasContent = sections.name || sections.summary || sections.experience.length > 0;
+    if (!hasContent) {
+      return res.status(422).json({
+        error: 'Could not extract resume structure. The document may use unsupported formatting. Please ensure your resume uses Word heading styles (Heading 1 for name, Heading 2 for section titles) or standard bold paragraph formatting.',
+        debugHint: `Mammoth produced ${html.length} characters of HTML. First 500 chars: ${html.substring(0, 500)}`
+      });
+    }
 
     res.json({
       name: sections.name || '',
@@ -758,9 +780,93 @@ app.get('/api/master-docs/parse-sections/:type', async (req, res) => {
   }
 });
 
+function parseExperienceSection(html, sections, stripTags) {
+  const datePattern = /([A-Za-z]+\.?\s+\d{4}\s*[-–—]\s*(?:[A-Za-z]+\.?\s+\d{4}|Present|Current))/i;
 
+  // Split into job blocks: each block starts with a line that contains a date range
+  // OR a bold/strong header line
+  const paras = [...html.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/gi)];
+
+  let currentJob = null;
+
+  paras.forEach((m, idx) => {
+    const rawHtml = m[1];
+    const text = stripTags(rawHtml);
+    if (!text || text.length < 2) return;
+
+    const hasDate = datePattern.test(text);
+    const hasBold = /<(?:strong|b)[^>]*>/i.test(rawHtml);
+    const isItalic = /^\s*<(?:em|i)[^>]*>/.test(rawHtml.trim()) || /^<em>/.test(rawHtml.trim());
+    const isBullet = /<li/i.test(rawHtml) || text.startsWith('•') || text.startsWith('-');
+    const isSectionHeader = ['SUMMARY','COMPETENCIES','SKILLS','EXPERIENCE','PROJECT','EDUCATION'].some(s => text.toUpperCase().includes(s) && text.length < 50);
+
+    if (isSectionHeader) {
+      if (currentJob) { sections.experience.push(currentJob); currentJob = null; }
+      return;
+    }
+
+    if (hasDate && hasBold && text.length < 200) {
+      // New job header line — save previous job first
+      if (currentJob) sections.experience.push(currentJob);
+
+      // Parse: "Job Title   City, ST   Month YYYY – Month YYYY"
+      // Split by tab or multiple spaces or | or date boundary
+      const parts = text.split(/\t|\s{2,}|\|/);
+      const dateMatch = text.match(datePattern);
+      const dates = dateMatch ? dateMatch[1].trim() : '';
+      const beforeDate = dates ? text.substring(0, text.indexOf(dates)).trim() : text;
+      const subParts = beforeDate.split(/\t|\s{2,}|\|/).map(s => s.trim()).filter(Boolean);
+      const jobTitle = subParts[0] || beforeDate;
+      const location = subParts[subParts.length - 1] !== jobTitle ? subParts[subParts.length - 1] : '';
+
+      currentJob = { key: jobTitle, title: jobTitle, company: '', sub: '', location, dates, masterBullets: [] };
+
+    } else if (currentJob && isItalic && !currentJob.sub && text.length < 150) {
+      // Sub-line: "(Department) – Company Name"
+      const companyMatch = text.match(/[-–—]\s*(.+)$/);
+      currentJob.company = companyMatch ? companyMatch[1].trim() : text;
+      currentJob.sub = companyMatch ? text.replace(/[-–—]\s*.+$/, '').trim() : '';
+      currentJob.key = `${currentJob.title} @ ${currentJob.company || currentJob.title}`;
+
+    } else if (currentJob && text.length > 20 && !hasDate) {
+      // Bullet point or paragraph within a job
+      const cleanBullet = text.replace(/^[•\-–]\s*/, '').trim();
+      if (cleanBullet.length > 10) {
+        currentJob.masterBullets.push(cleanBullet);
+      }
+
+    } else if (!currentJob && hasDate && text.length < 200) {
+      // Job header without bold (plain text header)
+      const dateMatch2 = text.match(datePattern);
+      const dates = dateMatch2 ? dateMatch2[1].trim() : '';
+      const beforeDate2 = dates ? text.substring(0, text.indexOf(dates)).trim() : text;
+      const subParts2 = beforeDate2.split(/\t|\s{2,}|\|/).map(s => s.trim()).filter(Boolean);
+      const jobTitle = subParts2[0] || text;
+      const location = subParts2.length > 1 ? subParts2[subParts2.length - 1] : '';
+      currentJob = { key: jobTitle, title: jobTitle, company: '', sub: '', location, dates, masterBullets: [] };
+    }
+  });
+
+  if (currentJob) sections.experience.push(currentJob);
+
+  // Also grab bullets from <ul><li> patterns (some formats use lists)
+  const liMatches = [...html.matchAll(/<li[^>]*>([\s\S]*?)<\/li>/gi)];
+  if (liMatches.length > 0 && sections.experience.length > 0) {
+    // Distribute bullets: if they came after a job, assign to last job
+    liMatches.forEach(lm => {
+      const bulletText = stripTags(lm[1]).trim();
+      if (bulletText.length > 10 && sections.experience.length > 0) {
+        const lastJob = sections.experience[sections.experience.length - 1];
+        if (!lastJob.masterBullets.includes(bulletText)) {
+          lastJob.masterBullets.push(bulletText);
+        }
+      }
+    });
+  }
+}
 
 // ── Settings ───────────────────────────────────────────────────────────────
+
 
 function getCleanHost(host) {
   let clean = host.trim().toLowerCase();
