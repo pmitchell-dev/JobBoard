@@ -2488,6 +2488,44 @@ async function refreshChatModels() {
   }
 }
 
+function parseOpenWebUiError(errText, httpStatus) {
+  let rawMsg = '';
+  try {
+    const json = JSON.parse(errText);
+    if (typeof json.detail === 'object' && json.detail !== null) {
+      rawMsg = json.detail.error?.message || json.detail.message || json.detail.error || '';
+    } else if (typeof json.error === 'object' && json.error !== null) {
+      rawMsg = json.error.message || json.error.code || '';
+    } else {
+      rawMsg = json.error || json.detail || json.message || '';
+    }
+    if (typeof rawMsg !== 'string') rawMsg = JSON.stringify(rawMsg);
+  } catch (e) {
+    rawMsg = errText || '';
+  }
+
+  const checkText = (rawMsg + ' ' + errText).toLowerCase();
+
+  if (
+    checkText.includes('high demand') ||
+    checkText.includes('503') ||
+    checkText.includes('unavailable') ||
+    checkText.includes('overloaded') ||
+    checkText.includes('serviceunavailableerror') ||
+    checkText.includes('geminiexception') ||
+    checkText.includes('rate limit') ||
+    checkText.includes('try again')
+  ) {
+    return '⚠️ The AI model is currently experiencing high demand and is temporarily busy. Please wait a few moments and try again.';
+  }
+
+  if (rawMsg.trim()) {
+    return `AI Service Error (${httpStatus}): ${rawMsg.trim()}`;
+  }
+
+  return `AI Service returned status ${httpStatus}. Please try again in a few moments.`;
+}
+
 async function sendChatMessage() {
   const inputEl = document.getElementById('chatInput');
   const sendBtn = document.getElementById('chatSendBtn');
@@ -2544,12 +2582,7 @@ async function sendChatMessage() {
 
     if (!response.ok) {
       const errText = await response.text();
-      let errMsg = `Server returned status ${response.status}.`;
-      try {
-        const errJson = JSON.parse(errText);
-        errMsg = errJson.error?.message || errJson.error || errMsg;
-      } catch (e) {}
-      throw new Error(errMsg);
+      throw new Error(parseOpenWebUiError(errText, response.status));
     }
 
     const reader = response.body.getReader();
@@ -2608,7 +2641,8 @@ async function sendChatMessage() {
 
   } catch (err) {
     console.error('Chat error:', err);
-    appendChatMessage('assistant', `❌ Error: ${err.message}. Make sure the Open WebUI container is running at ${openWebUiHost}:${openWebUiPort}, your API key is correct, and the proxy is active.`);
+    const errMsg = err.message.startsWith('⚠️') ? err.message : `❌ ${err.message}`;
+    appendChatMessage('assistant', errMsg);
   } finally {
     inputEl.disabled = false;
     sendBtn.disabled = false;
@@ -3136,7 +3170,7 @@ async function generateAiDocument(docType) { // 'resume' | 'cover'
     }
 
     // 3. Call Open WebUI Chat Completion API via proxy
-    const response = await fetch('/api/chat-proxy/api/v1/chat/completions', {
+    let response = await fetch('/api/chat-proxy/api/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -3154,12 +3188,38 @@ async function generateAiDocument(docType) { // 'resume' | 'cover'
 
     if (!response.ok) {
       const errText = await response.text();
-      let errMsg = `AI server returned ${response.status}`;
-      try {
-        const errJson = JSON.parse(errText);
-        errMsg = errJson.error?.message || errJson.error || errMsg;
-      } catch (e) {}
-      throw new Error(errMsg);
+      const friendlyErr = parseOpenWebUiError(errText, response.status);
+
+      // Auto-retry once after 3.5s if transient 503/400/high demand error
+      if (friendlyErr.includes('high demand') || response.status === 503 || response.status === 400 || response.status === 500) {
+        toast('⚠️ Upstream AI model busy (high demand). Retrying automatically in 3 seconds...', 'warning');
+        await new Promise(r => setTimeout(r, 3500));
+
+        const retryRes = await fetch('/api/chat-proxy/api/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': apiKey ? `Bearer ${apiKey}` : ''
+          },
+          body: JSON.stringify({
+            model: selectedModel,
+            messages: [
+              { role: 'system', content: systemRolePrompt },
+              { role: 'user', content: promptMessage }
+            ],
+            stream: false
+          })
+        });
+
+        if (retryRes.ok) {
+          response = retryRes;
+        } else {
+          const retryErrText = await retryRes.text();
+          throw new Error(parseOpenWebUiError(retryErrText, retryRes.status));
+        }
+      } else {
+        throw new Error(friendlyErr);
+      }
     }
 
     const data = await response.json();
