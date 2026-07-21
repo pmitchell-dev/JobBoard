@@ -657,54 +657,37 @@ function downloadDoc(type) {
 
   const label    = type === 'resume' ? 'Resume' : 'Cover Letter';
   const safeName = `${label} - ${job.company} - ${job.title}`.replace(/[/\\?%*:|"<>]/g, '-');
+  const filename = `${safeName}.doc`;
 
-  // Word-compatible HTML document wrapper
-  const wordDoc = `
-<html xmlns:o="urn:schemas-microsoft-com:office:office"
-      xmlns:w="urn:schemas-microsoft-com:office:word"
-      xmlns="http://www.w3.org/TR/REC-html40">
-<head>
-  <meta charset="utf-8" />
-  <!--[if gte mso 9]>
-  <xml>
-    <w:WordDocument>
-      <w:View>Print</w:View>
-      <w:Zoom>100</w:Zoom>
-    </w:WordDocument>
-  </xml>
-  <![endif]-->
-  <style>
-    body { font-family: Calibri, Arial, sans-serif; font-size: 11pt; line-height: 1.4; margin: 1in; color: #000; }
-    h1   { font-size: 16pt; font-weight: bold; margin-bottom: 6pt; }
-    h2   { font-size: 13pt; font-weight: bold; margin-bottom: 4pt; }
-    h3   { font-size: 11pt; font-weight: bold; margin-bottom: 3pt; }
-    p    { margin: 0 0 6pt; }
-    ul   { margin: 0 0 6pt 18pt; list-style-type: disc; }
-    ol   { margin: 0 0 6pt 18pt; }
-    li   { margin-bottom: 2pt; }
-    table { border-collapse: collapse; width: 100%; margin-bottom: 6pt; }
-    td, th { border: 1px solid #ccc; padding: 4pt 6pt; font-size: 10pt; }
-    a  { color: #1155cc; }
-    b, strong { font-weight: bold; }
-    i, em     { font-style: italic; }
-    u         { text-decoration: underline; }
-  </style>
-</head>
-<body>${html}</body>
-</html>`;
+  // Submit via hidden form to server POST endpoint /api/download-doc for 100% reliable HTTP attachment download
+  let form = document.getElementById('downloadDocForm');
+  if (!form) {
+    form = document.createElement('form');
+    form.id = 'downloadDocForm';
+    form.method = 'POST';
+    form.action = '/api/download-doc';
+    form.style.display = 'none';
 
-  const blob = new Blob(['\ufeff', wordDoc], { type: 'application/msword;charset=utf-8' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href     = url;
-  a.download = `${safeName}.doc`;
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => {
-    a.remove();
-    URL.revokeObjectURL(url);
-  }, 10000);
-  toast(`📄 "${safeName}.doc" downloaded`, 'success');
+    const inputHtml = document.createElement('input');
+    inputHtml.type = 'hidden';
+    inputHtml.name = 'html';
+    inputHtml.id = 'downloadDocFormHtml';
+    form.appendChild(inputHtml);
+
+    const inputFilename = document.createElement('input');
+    inputFilename.type = 'hidden';
+    inputFilename.name = 'filename';
+    inputFilename.id = 'downloadDocFormFilename';
+    form.appendChild(inputFilename);
+
+    document.body.appendChild(form);
+  }
+
+  document.getElementById('downloadDocFormHtml').value = html;
+  document.getElementById('downloadDocFormFilename').value = filename;
+
+  form.submit();
+  toast(`📄 "${filename}" downloaded`, 'success');
 }
 
 // ── Emails ───────────────────────────────────────────────────────────────────
