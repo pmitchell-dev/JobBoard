@@ -693,15 +693,17 @@ function downloadDoc(type) {
 <body>${html}</body>
 </html>`;
 
-  const blob = new Blob([wordDoc], { type: 'application/msword' });
+  const blob = new Blob(['\ufeff', wordDoc], { type: 'application/msword;charset=utf-8' });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
   a.href     = url;
   a.download = `${safeName}.doc`;
   document.body.appendChild(a);
   a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
+  setTimeout(() => {
+    a.remove();
+    URL.revokeObjectURL(url);
+  }, 10000);
   toast(`📄 "${safeName}.doc" downloaded`, 'success');
 }
 
