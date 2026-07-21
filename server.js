@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const puppeteer = require('puppeteer');
-const { ZipArchive } = require('archiver');
+const archiver = require('archiver');
 const unzipper = require('unzipper');
 const multer  = require('multer');
 const fetch = require('node-fetch');
@@ -95,7 +95,7 @@ function createBackup() {
 
     if (!fs.existsSync(dailyZipFile)) {
       const output = fs.createWriteStream(dailyZipFile);
-      const archive = new ZipArchive({ zlib: { level: 6 } });
+      const archive = archiver('zip', { zlib: { level: 6 } });
 
       output.on('close', () => {
         console.log(`[Backup] Successfully created daily zip backup: ${path.basename(dailyZipFile)} (${archive.pointer()} bytes)`);
@@ -1225,7 +1225,7 @@ app.get('/api/download-cache', (req, res) => {
 // ── OpenXML .docx generator using Archiver ──────────────────────────────────
 function generateDocxBuffer(html) {
   return new Promise((resolve, reject) => {
-    const archive = new ZipArchive({ zlib: { level: 6 } });
+    const archive = archiver('zip', { zlib: { level: 6 } });
     const buffers = [];
 
     archive.on('data', data => buffers.push(data));
@@ -1431,7 +1431,7 @@ app.get('/api/export', (req, res) => {
   res.setHeader('Content-Type', 'application/zip');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
 
-  const archive = new ZipArchive({ zlib: { level: 6 } });
+  const archive = archiver('zip', { zlib: { level: 6 } });
   archive.on('error', err => {
     console.error('[Export] Archive error:', err.message);
     if (!res.headersSent) res.status(500).json({ error: err.message });
