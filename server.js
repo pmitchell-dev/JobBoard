@@ -1321,20 +1321,60 @@ function htmlToOpenXmlBody(html) {
 }
 
 function processTableHtml(tableInnerHtml) {
-  let tblXml = '<w:tbl><w:tblPr><w:tblW w:w="5000" w:type="pct"/><w:tblBorders><w:top w:val="none"/><w:left w:val="none"/><w:bottom w:val="none"/><w:right w:val="none"/><w:insideH w:val="none"/><w:insideV w:val="none"/></w:tblBorders></w:tblPr>';
+  const rows = tableInnerHtml.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || [];
+  let maxCols = 1;
+  rows.forEach(r => {
+    const cols = (r.match(/<t[dh][^>]*>/gi) || []).length;
+    if (cols > maxCols) maxCols = cols;
+  });
+
+  const totalWidthTwips = 9360; // 6.5 inches printable width
+  const colWidthTwips = Math.floor(totalWidthTwips / maxCols);
+
+  let tblXml = `<w:tbl>
+    <w:tblPr>
+      <w:tblW w:w="${totalWidthTwips}" w:type="dxa"/>
+      <w:tblLayout w:type="fixed"/>
+      <w:tblBorders>
+        <w:top w:val="none"/>
+        <w:left w:val="none"/>
+        <w:bottom w:val="none"/>
+        <w:right w:val="none"/>
+        <w:insideH w:val="none"/>
+        <w:insideV w:val="none"/>
+      </w:tblBorders>
+    </w:tblPr>
+    <w:tblGrid>`;
+
+  for (let i = 0; i < maxCols; i++) {
+    tblXml += `<w:gridCol w:w="${colWidthTwips}"/>`;
+  }
+  tblXml += `</w:tblGrid>`;
 
   const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
   let rowMatch;
 
   while ((rowMatch = rowRegex.exec(tableInnerHtml)) !== null) {
-    let rowXml = '<w:tr>';
+    let rowXml = '<w:tr><w:trPr><w:cantSplit/></w:trPr>';
     const cellRegex = /<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi;
     let cellMatch;
 
     while ((cellMatch = cellRegex.exec(rowMatch[1])) !== null) {
       const cellContent = cellMatch[1];
       const innerBlocks = processBlockHtml(cellContent);
-      rowXml += `<w:tc><w:tcPr><w:tcW w:w="2500" w:type="pct"/></w:tcPr>${innerBlocks || '<w:p/>'}</w:tc>`;
+      rowXml += `<w:tc>
+        <w:tcPr>
+          <w:tcW w:w="${colWidthTwips}" w:type="dxa"/>
+          <w:vAlign w:val="top"/>
+          <w:tcMar>
+            <w:top w:w="60" w:type="dxa"/>
+            <w:left w:w="80" w:type="dxa"/>
+            <w:bottom w:w="60" w:type="dxa"/>
+            <w:right w:w="80" w:type="dxa"/>
+          </w:tcMar>
+        </w:tcPr>
+        ${innerBlocks || '<w:p/>'}
+      </w:tc>`;
     }
     rowXml += '</w:tr>';
     tblXml += rowXml;
@@ -1357,32 +1397,34 @@ function processBlockHtml(htmlSnippet) {
 
     if (/^<h1/i.test(trimmed)) {
       const inner = trimmed.replace(/^<h1[^>]*>/i, '').replace(/<\/h1>$/i, '');
-      xml += createParagraphXml(inner, { style: 'Heading1', before: 240, after: 120 });
+      xml += createParagraphXml(inner, { style: 'Heading1', align: 'center', before: 180, after: 60 });
     } else if (/^<h2/i.test(trimmed)) {
       const inner = trimmed.replace(/^<h2[^>]*>/i, '').replace(/<\/h2>$/i, '');
-      xml += createParagraphXml(inner, { style: 'Heading2', before: 180, after: 80 });
+      xml += createParagraphXml(inner, { style: 'Heading2', borderBottom: true, before: 200, after: 100 });
     } else if (/^<h3/i.test(trimmed)) {
       const inner = trimmed.replace(/^<h3[^>]*>/i, '').replace(/<\/h3>$/i, '');
-      xml += createParagraphXml(inner, { style: 'Heading3', before: 120, after: 60 });
+      xml += createParagraphXml(inner, { style: 'Heading3', before: 140, after: 60 });
     } else if (/^<li/i.test(trimmed)) {
       const inner = trimmed.replace(/^<li[^>]*>/i, '').replace(/<\/li>$/i, '');
       xml += createParagraphXml(inner, { isList: true, after: 60 });
     } else if (/<span/i.test(trimmed) && (trimmed.includes('justify-content') || trimmed.includes('job-header') || trimmed.includes('job-sub') || trimmed.includes('between'))) {
+      const isSub = trimmed.includes('job-sub') || trimmed.includes('italic');
       const spans = trimmed.match(/<(?:span|p|div)[^>]*>([\s\S]*?)<\/(?:span|p|div)>/gi) || [];
       if (spans.length >= 2) {
         const leftText = spans[0].replace(/<[^>]*>/g, '');
         const rightText = spans[spans.length - 1].replace(/<[^>]*>/g, '');
-        xml += createTabbedParagraphXml(leftText, rightText);
+        xml += createTabbedParagraphXml(leftText, rightText, isSub);
       } else {
         const inner = trimmed.replace(/<\/?(div|p)[^>]*>/gi, '');
-        xml += createParagraphXml(inner, { after: 120 });
+        xml += createParagraphXml(inner, { after: 100 });
       }
     } else {
       const lines = trimmed.split('\n');
       lines.forEach(line => {
         const lineText = line.replace(/<\/?(p|div|ul|ol|section|article)[^>]*>/gi, '').trim();
         if (lineText) {
-          xml += createParagraphXml(lineText, { after: 120 });
+          const isContactLine = lineText.includes('|') || lineText.includes('@');
+          xml += createParagraphXml(lineText, { align: isContactLine ? 'center' : 'left', after: isContactLine ? 160 : 100 });
         }
       });
     }
@@ -1391,18 +1433,21 @@ function processBlockHtml(htmlSnippet) {
   return xml;
 }
 
-function createTabbedParagraphXml(leftText, rightText) {
+function createTabbedParagraphXml(leftText, rightText, isSub = false) {
   const leftClean = escapeXml(decodeHtmlEntities(leftText.trim()));
   const rightClean = escapeXml(decodeHtmlEntities(rightText.trim()));
+
+  const boldTag = isSub ? '' : '<w:b/>';
+  const italicTag = isSub ? '<w:i/>' : '';
 
   return `<w:p>
     <w:pPr>
       <w:tabs><w:tab w:val="right" w:pos="9360"/></w:tabs>
-      <w:spacing w:before="60" w:after="80"/>
+      <w:spacing w:before="${isSub ? '20' : '140'}" w:after="${isSub ? '100' : '20'}"/>
     </w:pPr>
-    <w:r><w:rPr><w:b/><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr><w:t xml:space="preserve">${leftClean}</w:t></w:r>
+    <w:r><w:rPr>${boldTag}${italicTag}<w:sz w:val="23"/><w:szCs w:val="23"/></w:rPr><w:t xml:space="preserve">${leftClean}</w:t></w:r>
     <w:r><w:tab/></w:r>
-    <w:r><w:rPr><w:i/><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr><w:t xml:space="preserve">${rightClean}</w:t></w:r>
+    <w:r><w:rPr>${italicTag}<w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr><w:t xml:space="preserve">${rightClean}</w:t></w:r>
   </w:p>`;
 }
 
@@ -1411,11 +1456,17 @@ function createParagraphXml(innerHtml, opts = {}) {
   if (opts.style) {
     pPr += `<w:pStyle w:val="${opts.style}"/>`;
   }
+  if (opts.align === 'center') {
+    pPr += '<w:jc w:val="center"/>';
+  }
+  if (opts.borderBottom) {
+    pPr += '<w:pBdr><w:bottom w:val="single" w:sz="12" w:space="4" w:color="333333"/></w:pBdr>';
+  }
   if (opts.isList) {
     pPr += '<w:spacing w:after="60"/><w:ind w:left="360"/>';
   } else {
     const before = opts.before !== undefined ? opts.before : 0;
-    const after = opts.after !== undefined ? opts.after : 120;
+    const after = opts.after !== undefined ? opts.after : 100;
     pPr += `<w:spacing w:before="${before}" w:after="${after}"/>`;
   }
   pPr += '</w:pPr>';
