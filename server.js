@@ -1222,8 +1222,140 @@ app.get('/api/download-cache', (req, res) => {
   res.download(filepath, name || file);
 });
 
-// GET /api/jobs/:id/download-doc/:type  — server endpoint to stream saved resume/cover letter as .doc file
-app.get('/api/jobs/:id/download-doc/:type', (req, res) => {
+// ── OpenXML .docx generator using Archiver ──────────────────────────────────
+function generateDocxBuffer(html) {
+  return new Promise((resolve, reject) => {
+    const archive = new ZipArchive({ zlib: { level: 6 } });
+    const buffers = [];
+
+    archive.on('data', data => buffers.push(data));
+    archive.on('end', () => resolve(Buffer.concat(buffers)));
+    archive.on('error', err => reject(err));
+
+    const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>`;
+
+    const rels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>`;
+
+    const docRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>`;
+
+    const openXmlBody = htmlToOpenXmlBody(html);
+
+    const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    ${openXmlBody}
+  </w:body>
+</w:document>`;
+
+    archive.append(contentTypes, { name: '[Content_Types].xml' });
+    archive.append(rels, { name: '_rels/.rels' });
+    archive.append(docRels, { name: 'word/_rels/document.xml.rels' });
+    archive.append(documentXml, { name: 'word/document.xml' });
+
+    archive.finalize();
+  });
+}
+
+function escapeXml(str) {
+  return (str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function htmlToOpenXmlBody(html) {
+  let xml = '';
+  const cleanHtml = (html || '').replace(/\r\n/g, '\n');
+
+  const blocks = cleanHtml.split(/(?=<h[1-3][^>]*>|<p[^>]*>|<li[^>]*>)/i);
+
+  blocks.forEach(block => {
+    let text = block.trim();
+    if (!text) return;
+
+    let isH1 = false, isH2 = false, isH3 = false, isLi = false;
+
+    if (/^<h1/i.test(text)) { isH1 = true; text = text.replace(/^<h1[^>]*>/i, '').replace(/<\/h1>$/i, ''); }
+    else if (/^<h2/i.test(text)) { isH2 = true; text = text.replace(/^<h2[^>]*>/i, '').replace(/<\/h2>$/i, ''); }
+    else if (/^<h3/i.test(text)) { isH3 = true; text = text.replace(/^<h3[^>]*>/i, '').replace(/<\/h3>$/i, ''); }
+    else if (/^<li/i.test(text)) { isLi = true; text = text.replace(/^<li[^>]*>/i, '').replace(/<\/li>$/i, ''); }
+    else if (/^<p/i.test(text)) { text = text.replace(/^<p[^>]*>/i, '').replace(/<\/p>$/i, ''); }
+
+    text = text.replace(/<\/?(ul|ol|div|span)[^>]*>/gi, '');
+
+    const runsXml = parseInlineRuns(text, isH1, isH2, isH3);
+
+    let pPr = '';
+    if (isH1) {
+      pPr = '<w:pPr><w:pStyle w:val="Heading1"/><w:spacing w:before="240" w:after="120"/></w:pPr>';
+    } else if (isH2) {
+      pPr = '<w:pPr><w:pStyle w:val="Heading2"/><w:spacing w:before="180" w:after="80"/></w:pPr>';
+    } else if (isH3) {
+      pPr = '<w:pPr><w:pStyle w:val="Heading3"/><w:spacing w:before="120" w:after="60"/></w:pPr>';
+    } else if (isLi) {
+      pPr = '<w:pPr><w:spacing w:after="60"/><w:ind w:left="360"/></w:pPr>';
+    } else {
+      pPr = '<w:pPr><w:spacing w:after="120"/></w:pPr>';
+    }
+
+    xml += `<w:p>${pPr}${runsXml}</w:p>`;
+  });
+
+  if (!xml) {
+    xml = `<w:p><w:r><w:t>${escapeXml(cleanHtml)}</w:t></w:r></w:p>`;
+  }
+
+  return xml;
+}
+
+function parseInlineRuns(text, isH1, isH2, isH3) {
+  let runs = '';
+  const parts = text.split(/(<\/?(?:strong|b|em|i|u)>)/gi);
+  let isBold = isH1 || isH2 || isH3;
+  let isItalic = false;
+  let isUnderline = false;
+
+  parts.forEach(part => {
+    const lower = part.toLowerCase();
+    if (lower === '<strong>' || lower === '<b>') { isBold = true; return; }
+    if (lower === '</strong>' || lower === '</b>') { isBold = isH1 || isH2 || isH3; return; }
+    if (lower === '<em>' || lower === '<i>') { isItalic = true; return; }
+    if (lower === '</em>' || lower === '</i>') { isItalic = false; return; }
+    if (lower === '<u>') { isUnderline = true; return; }
+    if (lower === '</u>') { isUnderline = false; return; }
+
+    const plainText = part.replace(/<[^>]*>/g, '');
+    if (!plainText) return;
+
+    let rPr = '<w:rPr>';
+    if (isBold) rPr += '<w:b/>';
+    if (isItalic) rPr += '<w:i/>';
+    if (isUnderline) rPr += '<w:u w:val="single"/>';
+    if (isH1) rPr += '<w:sz w:val="32"/><w:szCs w:val="32"/>';
+    else if (isH2) rPr += '<w:sz w:val="26"/><w:szCs w:val="26"/>';
+    else if (isH3) rPr += '<w:sz w:val="22"/><w:szCs w:val="22"/>';
+    else rPr += '<w:sz w:val="22"/><w:szCs w:val="22"/>';
+    rPr += '</w:rPr>';
+
+    runs += `<w:r>${rPr}<w:t xml:space="preserve">${escapeXml(plainText)}</w:t></w:r>`;
+  });
+
+  return runs || '<w:r><w:t></w:t></w:r>';
+}
+
+// GET /api/jobs/:id/download-doc/:type  — server endpoint to stream saved resume/cover letter as binary .docx file
+app.get('/api/jobs/:id/download-doc/:type', async (req, res) => {
   const { id, type } = req.params;
   const jobs = readJobs();
   const job = jobs.find(j => j.id === id);
@@ -1241,96 +1373,36 @@ app.get('/api/jobs/:id/download-doc/:type', (req, res) => {
   const safeName = `${label} - ${job.company} - ${job.title}`.replace(/[/\\?%*:|"<>]/g, '-');
   const safeFilename = `${safeName}.docx`;
 
-  const wordDoc = `
-<html xmlns:o="urn:schemas-microsoft-com:office:office"
-      xmlns:w="urn:schemas-microsoft-com:office:word"
-      xmlns="http://www.w3.org/TR/REC-html40">
-<head>
-  <meta charset="utf-8" />
-  <!--[if gte mso 9]>
-  <xml>
-    <w:WordDocument>
-      <w:View>Print</w:View>
-      <w:Zoom>100</w:Zoom>
-    </w:WordDocument>
-  </xml>
-  <![endif]-->
-  <style>
-    body { font-family: Calibri, Arial, sans-serif; font-size: 11pt; line-height: 1.4; margin: 1in; color: #000; }
-    h1   { font-size: 16pt; font-weight: bold; margin-bottom: 6pt; }
-    h2   { font-size: 13pt; font-weight: bold; margin-bottom: 4pt; }
-    h3   { font-size: 11pt; font-weight: bold; margin-bottom: 3pt; }
-    p    { margin: 0 0 6pt; }
-    ul   { margin: 0 0 6pt 18pt; list-style-type: disc; }
-    ol   { margin: 0 0 6pt 18pt; }
-    li   { margin-bottom: 2pt; }
-    table { border-collapse: collapse; width: 100%; margin-bottom: 6pt; }
-    td, th { border: 1px solid #ccc; padding: 4pt 6pt; font-size: 10pt; }
-    a  { color: #1155cc; }
-    b, strong { font-weight: bold; }
-    i, em     { font-style: italic; }
-    u         { text-decoration: underline; }
-  </style>
-</head>
-<body>${html}</body>
-</html>`;
-
-  const buffer = Buffer.from('\ufeff' + wordDoc, 'utf8');
-
-  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodeURIComponent(safeFilename)}`);
-  res.setHeader('Content-Length', buffer.length);
-  res.send(buffer);
+  try {
+    const docxBuffer = await generateDocxBuffer(html);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodeURIComponent(safeFilename)}`);
+    res.setHeader('Content-Length', docxBuffer.length);
+    res.send(docxBuffer);
+  } catch (err) {
+    console.error('[DOCX Generation Error]', err);
+    res.status(500).send('Error generating .docx file: ' + err.message);
+  }
 });
 
-// POST /api/download-doc  — serve generated Word-compatible .docx file with server Content-Disposition headers
-app.post('/api/download-doc', express.urlencoded({ extended: true, limit: '10mb' }), (req, res) => {
+// POST /api/download-doc  — serve generated binary .docx file with server Content-Disposition headers
+app.post('/api/download-doc', express.urlencoded({ extended: true, limit: '10mb' }), async (req, res) => {
   const { html, filename } = req.body;
   if (!html) return res.status(400).send('HTML content required');
 
   let safeFilename = (filename || 'document.docx').replace(/[/\\?%*:|"<>]/g, '-');
   if (!safeFilename.endsWith('.docx')) safeFilename += '.docx';
 
-  const wordDoc = `
-<html xmlns:o="urn:schemas-microsoft-com:office:office"
-      xmlns:w="urn:schemas-microsoft-com:office:word"
-      xmlns="http://www.w3.org/TR/REC-html40">
-<head>
-  <meta charset="utf-8" />
-  <!--[if gte mso 9]>
-  <xml>
-    <w:WordDocument>
-      <w:View>Print</w:View>
-      <w:Zoom>100</w:Zoom>
-    </w:WordDocument>
-  </xml>
-  <![endif]-->
-  <style>
-    body { font-family: Calibri, Arial, sans-serif; font-size: 11pt; line-height: 1.4; margin: 1in; color: #000; }
-    h1   { font-size: 16pt; font-weight: bold; margin-bottom: 6pt; }
-    h2   { font-size: 13pt; font-weight: bold; margin-bottom: 4pt; }
-    h3   { font-size: 11pt; font-weight: bold; margin-bottom: 3pt; }
-    p    { margin: 0 0 6pt; }
-    ul   { margin: 0 0 6pt 18pt; list-style-type: disc; }
-    ol   { margin: 0 0 6pt 18pt; }
-    li   { margin-bottom: 2pt; }
-    table { border-collapse: collapse; width: 100%; margin-bottom: 6pt; }
-    td, th { border: 1px solid #ccc; padding: 4pt 6pt; font-size: 10pt; }
-    a  { color: #1155cc; }
-    b, strong { font-weight: bold; }
-    i, em     { font-style: italic; }
-    u         { text-decoration: underline; }
-  </style>
-</head>
-<body>${html}</body>
-</html>`;
-
-  const buffer = Buffer.from('\ufeff' + wordDoc, 'utf8');
-
-  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodeURIComponent(safeFilename)}`);
-  res.setHeader('Content-Length', buffer.length);
-  res.send(buffer);
+  try {
+    const docxBuffer = await generateDocxBuffer(html);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodeURIComponent(safeFilename)}`);
+    res.setHeader('Content-Length', docxBuffer.length);
+    res.send(docxBuffer);
+  } catch (err) {
+    console.error('[DOCX Generation Error]', err);
+    res.status(500).send('Error generating .docx file: ' + err.message);
+  }
 });
 
 // GET /cache/:filename  — serve cached files statically for other uses
