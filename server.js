@@ -14,16 +14,18 @@ const app = express();
 const PORT = 3000;
 
 // ── Paths ────────────────────────────────────────────────────────────────────
-const DATA_DIR       = path.join(__dirname, 'data');
-const CACHE_DIR      = path.join(__dirname, 'cache');
-const BACKUPS_DIR    = path.join(DATA_DIR, 'backups');
-const JOBS_FILE      = path.join(DATA_DIR, 'jobs.json');
-const BACKUP_FILE    = path.join(DATA_DIR, 'jobs.backup.json');
-const NOTEPAD_FILE   = path.join(DATA_DIR, 'notepad.json');
-const SETTINGS_FILE  = path.join(DATA_DIR, 'settings.json');
+const DATA_DIR              = path.join(__dirname, 'data');
+const CACHE_DIR             = path.join(__dirname, 'cache');
+const BACKUPS_DIR           = path.join(DATA_DIR, 'backups');
+const MASTER_DOCS_DIR       = path.join(DATA_DIR, 'master_docs');
+const JOBS_FILE             = path.join(DATA_DIR, 'jobs.json');
+const BACKUP_FILE           = path.join(DATA_DIR, 'jobs.backup.json');
+const NOTEPAD_FILE          = path.join(DATA_DIR, 'notepad.json');
+const SETTINGS_FILE         = path.join(DATA_DIR, 'settings.json');
+const MASTER_DOCS_META_FILE = path.join(MASTER_DOCS_DIR, 'metadata.json');
 
 // ── Bootstrap directories ────────────────────────────────────────────────────
-[DATA_DIR, CACHE_DIR, BACKUPS_DIR].forEach(dir => {
+[DATA_DIR, CACHE_DIR, BACKUPS_DIR, MASTER_DOCS_DIR].forEach(dir => {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 });
 
@@ -32,6 +34,9 @@ if (!fs.existsSync(JOBS_FILE)) {
 }
 if (!fs.existsSync(NOTEPAD_FILE)) {
   fs.writeFileSync(NOTEPAD_FILE, JSON.stringify({ text: '', updatedAt: null }, null, 2));
+}
+if (!fs.existsSync(MASTER_DOCS_META_FILE)) {
+  fs.writeFileSync(MASTER_DOCS_META_FILE, JSON.stringify({ resume: null, coverLetter: null }, null, 2));
 }
 
 let settings = {
@@ -110,6 +115,14 @@ function createBackup() {
         const cacheFiles = fs.readdirSync(CACHE_DIR);
         cacheFiles.forEach(f => {
           archive.file(path.join(CACHE_DIR, f), { name: `cache/${f}` });
+        });
+      }
+
+      // Master documents directory
+      if (fs.existsSync(MASTER_DOCS_DIR)) {
+        const docFiles = fs.readdirSync(MASTER_DOCS_DIR);
+        docFiles.forEach(f => {
+          archive.file(path.join(MASTER_DOCS_DIR, f), { name: `master_docs/${f}` });
         });
       }
 
@@ -500,6 +513,116 @@ app.put('/api/notepad', (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// ── Master Base Documents (.docx) ────────────────────────────────────────────
+
+function readMasterDocsMeta() {
+  try {
+    if (fs.existsSync(MASTER_DOCS_META_FILE)) {
+      return JSON.parse(fs.readFileSync(MASTER_DOCS_META_FILE, 'utf8'));
+    }
+  } catch (err) {
+    console.error('[MasterDocs] Failed to read metadata:', err.message);
+  }
+  return { resume: null, coverLetter: null };
+}
+
+function writeMasterDocsMeta(meta) {
+  try {
+    fs.writeFileSync(MASTER_DOCS_META_FILE, JSON.stringify(meta, null, 2));
+  } catch (err) {
+    console.error('[MasterDocs] Failed to write metadata:', err.message);
+  }
+}
+
+const masterDocsStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, MASTER_DOCS_DIR);
+  },
+  filename: (req, file, cb) => {
+    const type = (req.body.docType || req.query.docType) === 'coverLetter' ? 'cover_letter' : 'resume';
+    cb(null, `master_${type}.docx`);
+  }
+});
+
+const uploadMasterDoc = multer({
+  storage: masterDocsStorage,
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (ext === '.docx' || file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+      cb(null, true);
+    } else {
+      cb(new Error('Only .docx files are permitted for master base documents.'));
+    }
+  },
+  limits: { fileSize: 25 * 1024 * 1024 }
+});
+
+// GET /api/master-docs  — get status/metadata for master resume & cover letter
+app.get('/api/master-docs', (req, res) => {
+  const meta = readMasterDocsMeta();
+  const resumePath = path.join(MASTER_DOCS_DIR, 'master_resume.docx');
+  const coverPath  = path.join(MASTER_DOCS_DIR, 'master_cover_letter.docx');
+  res.json({
+    resume: (meta.resume && fs.existsSync(resumePath)) ? meta.resume : null,
+    coverLetter: (meta.coverLetter && fs.existsSync(coverPath)) ? meta.coverLetter : null
+  });
+});
+
+// POST /api/master-docs/upload  — upload master .docx
+app.post('/api/master-docs/upload', (req, res) => {
+  uploadMasterDoc.single('file')(req, res, (err) => {
+    if (err) return res.status(400).json({ error: err.message });
+    if (!req.file) return res.status(400).json({ error: 'No .docx file uploaded' });
+
+    const type = req.body.docType === 'coverLetter' ? 'coverLetter' : 'resume';
+    const meta = readMasterDocsMeta();
+
+    meta[type] = {
+      filename: req.file.originalname,
+      storedName: req.file.filename,
+      size: req.file.size,
+      uploadedAt: new Date().toISOString()
+    };
+
+    writeMasterDocsMeta(meta);
+    createBackup();
+    res.json({ success: true, docType: type, data: meta[type] });
+  });
+});
+
+// GET /api/master-docs/download/:type  — download master .docx
+app.get('/api/master-docs/download/:type', (req, res) => {
+  const type = req.params.type === 'coverLetter' ? 'coverLetter' : 'resume';
+  const fileName = type === 'coverLetter' ? 'master_cover_letter.docx' : 'master_resume.docx';
+  const filePath = path.join(MASTER_DOCS_DIR, fileName);
+  const meta = readMasterDocsMeta();
+  const docMeta = meta[type];
+
+  if (!fs.existsSync(filePath) || !docMeta) {
+    return res.status(404).json({ error: 'Master document not found' });
+  }
+
+  res.download(filePath, docMeta.filename || fileName);
+});
+
+// DELETE /api/master-docs/:type  — delete master .docx
+app.delete('/api/master-docs/:type', (req, res) => {
+  const type = req.params.type === 'coverLetter' ? 'coverLetter' : 'resume';
+  const fileName = type === 'coverLetter' ? 'master_cover_letter.docx' : 'master_resume.docx';
+  const filePath = path.join(MASTER_DOCS_DIR, fileName);
+
+  if (fs.existsSync(filePath)) {
+    fs.unlinkSync(filePath);
+  }
+
+  const meta = readMasterDocsMeta();
+  meta[type] = null;
+  writeMasterDocsMeta(meta);
+  createBackup();
+
+  res.json({ success: true, docType: type });
 });
 
 // ── Chat Proxy ───────────────────────────────────────────────────────────────
@@ -1133,6 +1256,14 @@ app.get('/api/export', (req, res) => {
     });
   }
 
+  // Master documents directory
+  if (fs.existsSync(MASTER_DOCS_DIR)) {
+    const docFiles = fs.readdirSync(MASTER_DOCS_DIR);
+    docFiles.forEach(f => {
+      archive.file(path.join(MASTER_DOCS_DIR, f), { name: `master_docs/${f}` });
+    });
+  }
+
   archive.finalize();
   console.log(`[Export] Sent ${filename}`);
 });
@@ -1195,10 +1326,14 @@ app.post('/api/import', upload.single('file'), async (req, res) => {
 
       // Replace all cache files
       for (const [entryPath, entry] of Object.entries(entryMap)) {
-        if (entryPath.startsWith('cache/') && (entryPath.endsWith('.png') || entryPath.endsWith('.pdf'))) {
+        if (entryPath.startsWith('cache/')) {
           const filename = path.basename(entryPath);
           const buf = await entry.buffer();
           fs.writeFileSync(path.join(CACHE_DIR, filename), buf);
+        } else if (entryPath.startsWith('master_docs/')) {
+          const filename = path.basename(entryPath);
+          const buf = await entry.buffer();
+          fs.writeFileSync(path.join(MASTER_DOCS_DIR, filename), buf);
         }
       }
 
@@ -1338,12 +1473,16 @@ app.post('/api/restore', express.json(), async (req, res) => {
           settings = { ...settings, ...importedSettings };
         }
 
-        // Replace all cache files
+        // Replace all cache files and master documents
         for (const [entryPath, entry] of Object.entries(entryMap)) {
-          if (entryPath.startsWith('cache/') && (entryPath.endsWith('.png') || entryPath.endsWith('.pdf'))) {
+          if (entryPath.startsWith('cache/')) {
             const cacheFilename = path.basename(entryPath);
             const buf = await entry.buffer();
             fs.writeFileSync(path.join(CACHE_DIR, cacheFilename), buf);
+          } else if (entryPath.startsWith('master_docs/')) {
+            const docFilename = path.basename(entryPath);
+            const buf = await entry.buffer();
+            fs.writeFileSync(path.join(MASTER_DOCS_DIR, docFilename), buf);
           }
         }
       } else {

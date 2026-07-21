@@ -108,6 +108,111 @@
     </div>
   </div>
 
+  <!-- ── Master Base Documents Bar ───────────────────────────────────────── -->
+  <div class="master-docs-bar" id="masterDocsBar">
+    <div class="master-docs-inner">
+      <div class="master-docs-header" onclick="toggleMasterDocsPanel()">
+        <div class="master-docs-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+          </svg>
+          <span>Master AI Base Documents</span>
+          <span class="master-docs-badge" id="masterDocsSummaryBadge">0 / 2 Uploaded</span>
+        </div>
+        <div class="master-docs-subtitle">Generic .docx base files for AI resume &amp; cover letter customization</div>
+        <button class="master-docs-toggle-btn" id="masterDocsToggleBtn" aria-label="Toggle Master Documents panel">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+      </div>
+      <div class="master-docs-body" id="masterDocsBody">
+        <div class="master-docs-grid">
+          <!-- Master Resume Card -->
+          <div class="master-doc-card" id="masterResumeCard">
+            <div class="master-doc-card-header">
+              <div class="master-doc-card-title">
+                <span class="doc-icon">📄</span>
+                <strong>Master Resume</strong>
+              </div>
+              <span class="master-doc-status-pill empty" id="masterResumeStatus">Not uploaded</span>
+            </div>
+            <div class="master-doc-dropzone" id="masterResumeDropzone"
+                 ondragover="onMasterDocDragOver(event, 'resume')"
+                 ondragleave="onMasterDocDragLeave(event, 'resume')"
+                 ondrop="onMasterDocDrop(event, 'resume')"
+                 onclick="triggerMasterDocUpload('resume')">
+              <div class="master-doc-empty-state" id="masterResumeEmptyState">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" opacity="0.6"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                <span>Upload Master Resume <strong>.docx</strong></span>
+                <span class="drop-hint">Drag &amp; drop or click to browse</span>
+              </div>
+              <div class="master-doc-file-info hidden" id="masterResumeFileInfo">
+                <div class="file-details">
+                  <span class="file-name" id="masterResumeFileName">master_resume.docx</span>
+                  <span class="file-meta" id="masterResumeFileMeta">—</span>
+                </div>
+                <div class="file-actions">
+                  <button class="btn-icon-sm" onclick="downloadMasterDoc(event, 'resume')" title="Download .docx">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  </button>
+                  <button class="btn-icon-sm" onclick="triggerMasterDocUpload('resume', event)" title="Replace .docx">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                  </button>
+                  <button class="btn-icon-sm danger" onclick="deleteMasterDoc(event, 'resume')" title="Remove">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <input type="file" id="masterResumeFileInput" accept=".docx" class="hidden" onchange="onMasterDocFileSelect(event, 'resume')" />
+          </div>
+
+          <!-- Master Cover Letter Card -->
+          <div class="master-doc-card" id="masterCoverCard">
+            <div class="master-doc-card-header">
+              <div class="master-doc-card-title">
+                <span class="doc-icon">✉️</span>
+                <strong>Master Cover Letter</strong>
+              </div>
+              <span class="master-doc-status-pill empty" id="masterCoverStatus">Not uploaded</span>
+            </div>
+            <div class="master-doc-dropzone" id="masterCoverDropzone"
+                 ondragover="onMasterDocDragOver(event, 'coverLetter')"
+                 ondragleave="onMasterDocDragLeave(event, 'coverLetter')"
+                 ondrop="onMasterDocDrop(event, 'coverLetter')"
+                 onclick="triggerMasterDocUpload('coverLetter')">
+              <div class="master-doc-empty-state" id="masterCoverEmptyState">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" opacity="0.6"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                <span>Upload Master Cover Letter <strong>.docx</strong></span>
+                <span class="drop-hint">Drag &amp; drop or click to browse</span>
+              </div>
+              <div class="master-doc-file-info hidden" id="masterCoverFileInfo">
+                <div class="file-details">
+                  <span class="file-name" id="masterCoverFileName">master_cover_letter.docx</span>
+                  <span class="file-meta" id="masterCoverFileMeta">—</span>
+                </div>
+                <div class="file-actions">
+                  <button class="btn-icon-sm" onclick="downloadMasterDoc(event, 'coverLetter')" title="Download .docx">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  </button>
+                  <button class="btn-icon-sm" onclick="triggerMasterDocUpload('coverLetter', event)" title="Replace .docx">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                  </button>
+                  <button class="btn-icon-sm danger" onclick="deleteMasterDoc(event, 'coverLetter')" title="Remove">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <input type="file" id="masterCoverFileInput" accept=".docx" class="hidden" onchange="onMasterDocFileSelect(event, 'coverLetter')" />
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ── Kanban Board ──────────────────────────────────────────────────── -->
   <main class="kanban-main">
     <div class="kanban-board" id="kanbanBoard">

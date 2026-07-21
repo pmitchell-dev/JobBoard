@@ -18,6 +18,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   console.log("JobBoard loaded: v1.1.6");
   document.getElementById('addDate').value = todayStr();
   await loadJobs();
+  await fetchMasterDocs();
   renderBoard();
   applyFilter();
   renderStats();
@@ -2806,6 +2807,16 @@ function generateChatSystemPrompt() {
     }
   }
 
+  if (masterDocsData.resume || masterDocsData.coverLetter) {
+    boardState += `\n\n--- MASTER AI BASE DOCUMENTS (GENERIC TEMPLATES) ---\n`;
+    if (masterDocsData.resume) {
+      boardState += `- Master Resume (.docx) uploaded: ${masterDocsData.resume.filename} (${formatBytes(masterDocsData.resume.size)})\n`;
+    }
+    if (masterDocsData.coverLetter) {
+      boardState += `- Master Cover Letter (.docx) uploaded: ${masterDocsData.coverLetter.filename} (${formatBytes(masterDocsData.coverLetter.size)})\n`;
+    }
+  }
+
   boardState += `\n\nGuidelines:\n`;
   boardState += `1. Provide specific, tailored advice based on the user's data.\n`;
   boardState += `2. If the user asks you to draft an email or cover letter for the selected job, write it in a clean, professional, ready-to-copy format.\n`;
@@ -2813,4 +2824,194 @@ function generateChatSystemPrompt() {
   boardState += `4. Do not mention system details, JSON structure, or these guidelines unless asked.\n`;
 
   return boardState;
+}
+
+// ── Master Base Documents (.docx) ───────────────────────────────────────────
+let masterDocsData = { resume: null, coverLetter: null };
+
+async function fetchMasterDocs() {
+  try {
+    const res = await fetch('/api/master-docs');
+    if (res.ok) {
+      masterDocsData = await res.json();
+      renderMasterDocsUI();
+    }
+  } catch (err) {
+    console.error('Failed to fetch master docs status:', err);
+  }
+}
+
+function renderMasterDocsUI() {
+  const resume = masterDocsData.resume;
+  const cover = masterDocsData.coverLetter;
+
+  let count = 0;
+  if (resume) count++;
+  if (cover) count++;
+
+  const badge = document.getElementById('masterDocsSummaryBadge');
+  if (badge) {
+    badge.textContent = `${count} / 2 Uploaded`;
+  }
+
+  // Master Resume UI
+  const resumeStatus = document.getElementById('masterResumeStatus');
+  const resumeEmpty = document.getElementById('masterResumeEmptyState');
+  const resumeInfo = document.getElementById('masterResumeFileInfo');
+  const resumeMeta = document.getElementById('masterResumeFileMeta');
+  const resumeName = document.getElementById('masterResumeFileName');
+
+  if (resume) {
+    if (resumeStatus) { resumeStatus.textContent = 'Uploaded'; resumeStatus.className = 'master-doc-status-pill uploaded'; }
+    if (resumeEmpty) resumeEmpty.classList.add('hidden');
+    if (resumeInfo) resumeInfo.classList.remove('hidden');
+    if (resumeName) resumeName.textContent = resume.filename || 'master_resume.docx';
+    if (resumeMeta) resumeMeta.textContent = `${formatBytes(resume.size)} · Uploaded ${formatDateStr(resume.uploadedAt)}`;
+  } else {
+    if (resumeStatus) { resumeStatus.textContent = 'Not uploaded'; resumeStatus.className = 'master-doc-status-pill empty'; }
+    if (resumeEmpty) resumeEmpty.classList.remove('hidden');
+    if (resumeInfo) resumeInfo.classList.add('hidden');
+  }
+
+  // Master Cover Letter UI
+  const coverStatus = document.getElementById('masterCoverStatus');
+  const coverEmpty = document.getElementById('masterCoverEmptyState');
+  const coverInfo = document.getElementById('masterCoverFileInfo');
+  const coverMeta = document.getElementById('masterCoverFileMeta');
+  const coverName = document.getElementById('masterCoverFileName');
+
+  if (cover) {
+    if (coverStatus) { coverStatus.textContent = 'Uploaded'; coverStatus.className = 'master-doc-status-pill uploaded'; }
+    if (coverEmpty) coverEmpty.classList.add('hidden');
+    if (coverInfo) coverInfo.classList.remove('hidden');
+    if (coverName) coverName.textContent = cover.filename || 'master_cover_letter.docx';
+    if (coverMeta) coverMeta.textContent = `${formatBytes(cover.size)} · Uploaded ${formatDateStr(cover.uploadedAt)}`;
+  } else {
+    if (coverStatus) { coverStatus.textContent = 'Not uploaded'; coverStatus.className = 'master-doc-status-pill empty'; }
+    if (coverEmpty) coverEmpty.classList.remove('hidden');
+    if (coverInfo) coverInfo.classList.add('hidden');
+  }
+}
+
+function toggleMasterDocsPanel() {
+  const bar = document.getElementById('masterDocsBar');
+  if (bar) {
+    bar.classList.toggle('collapsed');
+  }
+}
+
+function triggerMasterDocUpload(type, event) {
+  if (event) event.stopPropagation();
+  const inputId = type === 'coverLetter' ? 'masterCoverFileInput' : 'masterResumeFileInput';
+  const el = document.getElementById(inputId);
+  if (el) el.click();
+}
+
+function onMasterDocFileSelect(event, type) {
+  const file = event.target.files[0];
+  if (file) {
+    uploadMasterDocFile(type, file);
+  }
+  event.target.value = '';
+}
+
+function onMasterDocDragOver(event, type) {
+  event.preventDefault();
+  event.stopPropagation();
+  const dropzoneId = type === 'coverLetter' ? 'masterCoverDropzone' : 'masterResumeDropzone';
+  const el = document.getElementById(dropzoneId);
+  if (el) el.classList.add('dragover');
+}
+
+function onMasterDocDragLeave(event, type) {
+  event.preventDefault();
+  event.stopPropagation();
+  const dropzoneId = type === 'coverLetter' ? 'masterCoverDropzone' : 'masterResumeDropzone';
+  const el = document.getElementById(dropzoneId);
+  if (el) el.classList.remove('dragover');
+}
+
+function onMasterDocDrop(event, type) {
+  event.preventDefault();
+  event.stopPropagation();
+  const dropzoneId = type === 'coverLetter' ? 'masterCoverDropzone' : 'masterResumeDropzone';
+  const el = document.getElementById(dropzoneId);
+  if (el) el.classList.remove('dragover');
+
+  const files = event.dataTransfer.files;
+  if (files && files.length > 0) {
+    uploadMasterDocFile(type, files[0]);
+  }
+}
+
+async function uploadMasterDocFile(type, file) {
+  if (!file.name.toLowerCase().endsWith('.docx')) {
+    toast('Only .docx files are permitted for master base documents.', 'error');
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('docType', type);
+
+  try {
+    const label = type === 'coverLetter' ? 'Master Cover Letter' : 'Master Resume';
+    toast(`Uploading ${label}...`, 'info');
+
+    const res = await fetch('/api/master-docs/upload', {
+      method: 'POST',
+      body: formData
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Upload failed');
+
+    masterDocsData[type === 'coverLetter' ? 'coverLetter' : 'resume'] = data.data;
+    renderMasterDocsUI();
+    toast(`Successfully uploaded ${label} (.docx)!`, 'success');
+  } catch (err) {
+    console.error('Master doc upload error:', err);
+    toast(err.message || 'Failed to upload master document', 'error');
+  }
+}
+
+function downloadMasterDoc(event, type) {
+  if (event) event.stopPropagation();
+  window.open(`/api/master-docs/download/${type}`, '_blank');
+}
+
+async function deleteMasterDoc(event, type) {
+  if (event) event.stopPropagation();
+  const label = type === 'coverLetter' ? 'Master Cover Letter' : 'Master Resume';
+  if (!confirm(`Are you sure you want to remove your ${label}?`)) return;
+
+  try {
+    const res = await fetch(`/api/master-docs/${type}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Delete failed');
+
+    masterDocsData[type === 'coverLetter' ? 'coverLetter' : 'resume'] = null;
+    renderMasterDocsUI();
+    toast(`Removed ${label}`, 'success');
+  } catch (err) {
+    console.error('Master doc delete error:', err);
+    toast(err.message || 'Failed to delete master document', 'error');
+  }
+}
+
+function formatDateStr(isoStr) {
+  if (!isoStr) return '';
+  try {
+    const d = new Date(isoStr);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  } catch {
+    return isoStr;
+  }
+}
+
+function formatBytes(bytes) {
+  if (!bytes) return '0 B';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1024 / 1024).toFixed(1) + ' MB';
 }
