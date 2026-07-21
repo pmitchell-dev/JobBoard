@@ -41,7 +41,10 @@ if (!fs.existsSync(MASTER_DOCS_META_FILE)) {
 
 let settings = {
   openWebUiHost: 'localhost',
-  openWebUiPort: 3002
+  openWebUiPort: 3002,
+  openWebUiApiKey: '',
+  openWebUiModel: '',
+  openWebUiSystemPrompt: ''
 };
 
 if (fs.existsSync(SETTINGS_FILE)) {
@@ -708,9 +711,13 @@ app.put('/api/settings', (req, res) => {
 
   settings.openWebUiHost = openWebUiHost.trim();
   settings.openWebUiPort = portVal;
+  if (req.body.openWebUiApiKey !== undefined) settings.openWebUiApiKey = req.body.openWebUiApiKey;
+  if (req.body.openWebUiModel !== undefined) settings.openWebUiModel = req.body.openWebUiModel;
+  if (req.body.openWebUiSystemPrompt !== undefined) settings.openWebUiSystemPrompt = req.body.openWebUiSystemPrompt;
   
   try {
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
+    createBackup();
     res.json(settings);
   } catch (err) {
     res.status(500).json({ error: 'Failed to save settings: ' + err.message });

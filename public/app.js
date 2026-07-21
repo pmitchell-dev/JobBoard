@@ -1773,7 +1773,7 @@ function initChatCopilot() {
   if (savedApiKey) document.getElementById('chatApiKey').value = savedApiKey;
   if (savedPrompt) document.getElementById('chatSystemPrompt').value = savedPrompt;
 
-  // Load Host / Port from backend settings
+  // Load Settings from backend
   fetch('/api/settings')
     .then(r => r.json())
     .then(data => {
@@ -1785,6 +1785,21 @@ function initChatCopilot() {
       if (hostEl) hostEl.value = openWebUiHost;
       if (portEl) portEl.value = openWebUiPort;
       
+      // Restore API key, model selection, and custom system prompt from backend if present
+      if (data.openWebUiApiKey) {
+        localStorage.setItem('jobboard_chat_apikey', data.openWebUiApiKey);
+        const apiKeyEl = document.getElementById('chatApiKey');
+        if (apiKeyEl) apiKeyEl.value = data.openWebUiApiKey;
+      }
+      if (data.openWebUiModel) {
+        localStorage.setItem('jobboard_chat_model', data.openWebUiModel);
+      }
+      if (data.openWebUiSystemPrompt) {
+        localStorage.setItem('jobboard_chat_system_prompt', data.openWebUiSystemPrompt);
+        const promptEl = document.getElementById('chatSystemPrompt');
+        if (promptEl) promptEl.value = data.openWebUiSystemPrompt;
+      }
+
       // Trigger models and prompts load after settings are loaded
       refreshChatModels();
       refreshChatPrompts();
@@ -2289,11 +2304,17 @@ async function saveChatSettings() {
   }
 
   try {
-    // Save host/port to backend
+    // Save host/port/apiKey/model/prompt to backend settings.json
     const res = await fetch('/api/settings', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ openWebUiHost: hostInput, openWebUiPort: port })
+      body: JSON.stringify({
+        openWebUiHost: hostInput,
+        openWebUiPort: port,
+        openWebUiApiKey: apiKey,
+        openWebUiModel: model,
+        openWebUiSystemPrompt: systemPrompt
+      })
     });
     
     if (!res.ok) {
