@@ -3170,7 +3170,7 @@ async function generateAiDocument(docType) { // 'resume' | 'cover'
     }
 
     // 3. Call Open WebUI Chat Completion API via proxy
-    let response = await fetch('/api/chat-proxy/api/v1/chat/completions', {
+    const response = await fetch('/api/chat-proxy/api/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -3188,38 +3188,7 @@ async function generateAiDocument(docType) { // 'resume' | 'cover'
 
     if (!response.ok) {
       const errText = await response.text();
-      const friendlyErr = parseOpenWebUiError(errText, response.status);
-
-      // Auto-retry once after 3.5s if transient 503/400/high demand error
-      if (friendlyErr.includes('high demand') || response.status === 503 || response.status === 400 || response.status === 500) {
-        toast('⚠️ Upstream AI model busy (high demand). Retrying automatically in 3 seconds...', 'warning');
-        await new Promise(r => setTimeout(r, 3500));
-
-        const retryRes = await fetch('/api/chat-proxy/api/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': apiKey ? `Bearer ${apiKey}` : ''
-          },
-          body: JSON.stringify({
-            model: selectedModel,
-            messages: [
-              { role: 'system', content: systemRolePrompt },
-              { role: 'user', content: promptMessage }
-            ],
-            stream: false
-          })
-        });
-
-        if (retryRes.ok) {
-          response = retryRes;
-        } else {
-          const retryErrText = await retryRes.text();
-          throw new Error(parseOpenWebUiError(retryErrText, retryRes.status));
-        }
-      } else {
-        throw new Error(friendlyErr);
-      }
+      throw new Error(parseOpenWebUiError(errText, response.status));
     }
 
     const data = await response.json();
