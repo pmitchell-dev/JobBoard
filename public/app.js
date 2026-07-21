@@ -3197,8 +3197,12 @@ async function generateAiDocument(docType) { // 'resume' | 'cover'
     const data = await response.json();
     let generatedContent = data.choices?.[0]?.message?.content || '';
 
-    // Strip markdown code fences if model included them
+    // Strip style tags, script tags, head tags, comments, and markdown code fences
     generatedContent = generatedContent
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+      .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, '')
+      .replace(/<!--[\s\S]*?-->/g, '')
       .replace(/^```html\s*/i, '')
       .replace(/^```\s*/, '')
       .replace(/```\s*$/, '')

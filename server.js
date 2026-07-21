@@ -1288,7 +1288,12 @@ function escapeXml(str) {
 
 function htmlToOpenXmlBody(html) {
   let xml = '';
-  const cleanHtml = (html || '').replace(/\r\n/g, '\n');
+  const cleanHtml = (html || '')
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, '')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/\r\n/g, '\n');
 
   const blocks = cleanHtml.split(/(?=<h[1-3][^>]*>|<p[^>]*>|<li[^>]*>)/i);
 
