@@ -3087,7 +3087,7 @@ async function generateAiDocument(docType) { // 'resume' | 'cover'
   try {
     toast(`Compiling context and generating customized ${label}...`, 'info');
 
-    // 1. Extract Master Base .docx document text if available
+    // 1. Extract Master Base .docx document HTML if available
     let masterDocText = '';
     const masterEndpoint = docType === 'resume' ? '/api/master-docs/download/resume' : '/api/master-docs/download/coverLetter';
     try {
@@ -3095,7 +3095,7 @@ async function generateAiDocument(docType) { // 'resume' | 'cover'
       if (res.ok) {
         const arrayBuffer = await res.arrayBuffer();
         if (typeof mammoth !== 'undefined') {
-          const result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
+          const result = await mammoth.convertToHtml({ arrayBuffer: arrayBuffer });
           masterDocText = (result.value || '').trim();
         }
       }
@@ -3139,26 +3139,35 @@ async function generateAiDocument(docType) { // 'resume' | 'cover'
     let systemRolePrompt = '';
 
     if (docType === 'resume') {
-      systemRolePrompt = 'You are an AI resume generator. You generate ONLY a clean HTML Resume. You NEVER include a cover letter, application letter, or introductory salutation. You NEVER change previous job titles or fabricate unmentioned experience.';
+      systemRolePrompt = 'You are an AI resume generator. You generate ONLY a clean HTML Resume matching the master resume structure. You NEVER include a cover letter or introductory text. You NEVER change previous job titles or fabricate unmentioned experience.';
       promptMessage = `You are an expert executive resume writer. Your goal is to customize a high-impact, professional RESUME tailored specifically for the position of "${title}" at "${company}".\n\n`;
       if (masterDocText) {
-        promptMessage += `MASTER BASE RESUME (Use as candidate background, experience, skills, and base template):\n"""\n${masterDocText}\n"""\n\n`;
+        promptMessage += `MASTER BASE RESUME HTML TEMPLATE & CONTENT (Match this structure, bullet format, and background):\n"""\n${masterDocText}\n"""\n\n`;
       } else {
         promptMessage += `(Note: No Master Resume .docx file uploaded. Generate a realistic, highly tailored professional resume for this applicant.)\n\n`;
       }
       promptMessage += `${jobContext}\n\n`;
-      promptMessage += `STRICT OUTPUT REQUIREMENTS:\n`;
+      promptMessage += `STRICT OUTPUT REQUIREMENTS & FORMATTING RULES:\n`;
       promptMessage += `1. Generate ONLY the candidate's Resume. Do NOT generate or include a cover letter, application letter, email body, or introductory text/salutation.\n`;
       promptMessage += `2. DO NOT CHANGE OR ALTER PREVIOUS JOB TITLES. Keep all actual job titles EXACTLY as listed in the candidate's master background history. Do NOT alter past job titles to better match the target role.\n`;
       promptMessage += `3. DO NOT FABRICATE OR ADD UNMENTIONED EXPERIENCE. Do not invent company names, technologies, tools, or achievements not explicitly stated in the candidate's master resume or job notes.\n`;
-      promptMessage += `4. Tailor the candidate's professional summary, skills, and work experience bullet points specifically to emphasize fit for ${title} at ${company}.\n`;
-      promptMessage += `5. Output clean, semantic HTML suitable for rich text display (use <h1>, <h2>, <h3>, <p>, <ul>, <li>, <strong>, <em> tags).\n`;
-      promptMessage += `6. Do NOT wrap output in markdown code fences (like \`\`\`html). Return ONLY the raw HTML body content. Do not include <html> or <body> tags.`;
+      promptMessage += `4. STRUCTURE & HTML LAYOUT RULES (MATCH MASTER RESUME):\n`;
+      promptMessage += `   - Name: In <h1> centered at the top.\n`;
+      promptMessage += `   - Contact Info: Single <p> line centered under name with location, phone, email, and links separated by " | ".\n`;
+      promptMessage += `   - Main Section Titles: Use UPPERCASE <h2> headers for sections (e.g. <h2>PROFESSIONAL SUMMARY</h2>, <h2>CORE COMPETENCIES</h2>, <h2>PROFESSIONAL EXPERIENCE</h2>, <h2>TECHNICAL PROJECTS</h2>, <h2>EDUCATION</h2>).\n`;
+      promptMessage += `   - Job Entries: For every past job, output:\n`;
+      promptMessage += `       <div class="job-header"><span>Job Title</span><span>Location | Dates</span></div>\n`;
+      promptMessage += `       <div class="job-sub"><em>(Department/Ops) – Company Name</em></div>\n`;
+      promptMessage += `   - Work Achievements: Use <ul> and <li> for achievements. Start each bullet point with a bold title (e.g. <li><strong>Key Achievement Title:</strong> Description...</li>).\n`;
+      promptMessage += `   - Skills/Competencies: Use a 3-column HTML <table> with <th> headers for categories.\n`;
+      promptMessage += `   - Education & Projects: Place degree/project title in <strong> and institution/subtext in <em>.\n`;
+      promptMessage += `5. Output clean, semantic HTML body content (use <h1>, <h2>, <h3>, <p>, <ul>, <li>, <table>, <tr>, <th>, <td>, <strong>, <em> tags).\n`;
+      promptMessage += `6. Do NOT wrap output in markdown code fences (like \`\`\`html). Return ONLY the raw HTML content. Do not include <html> or <body> tags.`;
     } else {
       systemRolePrompt = 'You are an AI cover letter generator. You generate ONLY a clean HTML Cover Letter. You NEVER include a resume, work history bullet points, or CV. You NEVER change job titles or fabricate unmentioned experience.';
       promptMessage = `You are an expert career consultant. Your goal is to write a compelling, tailored COVER LETTER for the position of "${title}" at "${company}".\n\n`;
       if (masterDocText) {
-        promptMessage += `MASTER BASE COVER LETTER (Use as style/tone guide and applicant details template):\n"""\n${masterDocText}\n"""\n\n`;
+        promptMessage += `MASTER BASE COVER LETTER HTML TEMPLATE (Use as style/tone guide and applicant details template):\n"""\n${masterDocText}\n"""\n\n`;
       } else {
         promptMessage += `(Note: No Master Cover Letter .docx file uploaded. Generate a compelling, professional cover letter tailored for this job.)\n\n`;
       }

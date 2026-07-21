@@ -1463,7 +1463,7 @@ function createParagraphXml(innerHtml, opts = {}) {
     pPr += '<w:pBdr><w:bottom w:val="single" w:sz="12" w:space="4" w:color="333333"/></w:pBdr>';
   }
   if (opts.isList) {
-    pPr += '<w:spacing w:after="60"/><w:ind w:left="360"/>';
+    pPr += '<w:spacing w:after="60"/><w:ind w:left="360" w:hanging="200"/>';
   } else {
     const before = opts.before !== undefined ? opts.before : 0;
     const after = opts.after !== undefined ? opts.after : 100;
@@ -1471,9 +1471,14 @@ function createParagraphXml(innerHtml, opts = {}) {
   }
   pPr += '</w:pPr>';
 
+  let bulletPrefix = '';
+  if (opts.isList) {
+    bulletPrefix = '<w:r><w:rPr><w:b/><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr><w:t xml:space="preserve">&#8226;  </w:t></w:r>';
+  }
+
   const runsXml = parseInlineRuns(innerHtml, opts.style === 'Heading1', opts.style === 'Heading2', opts.style === 'Heading3');
 
-  return `<w:p>${pPr}${runsXml}</w:p>`;
+  return `<w:p>${pPr}${bulletPrefix}${runsXml}</w:p>`;
 }
 
 function parseInlineRuns(text, isH1, isH2, isH3) {
