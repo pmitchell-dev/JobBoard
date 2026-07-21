@@ -3015,3 +3015,190 @@ function formatBytes(bytes) {
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
   return (bytes / 1024 / 1024).toFixed(1) + ' MB';
 }
+
+// ── AI Document Generation (.docx / HTML) ───────────────────────────────────
+async function generateAiDocument(docType) { // 'resume' | 'cover'
+  if (!activeJobId) {
+    toast('No active job task selected.', 'error');
+    return;
+  }
+
+  const job = jobs.find(j => j.id === activeJobId);
+  if (!job) {
+    toast('Job task not found.', 'error');
+    return;
+  }
+
+  const selectedModel = localStorage.getItem('jobboard_chat_model') || '';
+  if (!selectedModel) {
+    toast('Please select an AI Model in Copilot settings (⚙️) first.', 'error');
+    toggleChatSettings();
+    return;
+  }
+
+  const apiKey = localStorage.getItem('jobboard_chat_apikey') || '';
+  const label = docType === 'resume' ? 'Resume' : 'Cover Letter';
+  const btnId = docType === 'resume' ? 'genResumeBtn' : 'genCoverBtn';
+  const btnEl = document.getElementById(btnId);
+  const origBtnHtml = btnEl ? btnEl.innerHTML : '';
+
+  if (btnEl) {
+    btnEl.disabled = true;
+    btnEl.innerHTML = `<span class="spinner" style="display:inline-block;width:12px;height:12px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;margin-right:4px;"></span> Generating ${label}...`;
+  }
+
+  try {
+    toast(`Compiling context and generating customized ${label}...`, 'info');
+
+    // 1. Extract Master Base .docx document text if available
+    let masterDocText = '';
+    const masterEndpoint = docType === 'resume' ? '/api/master-docs/download/resume' : '/api/master-docs/download/coverLetter';
+    try {
+      const res = await fetch(masterEndpoint);
+      if (res.ok) {
+        const arrayBuffer = await res.arrayBuffer();
+        if (typeof mammoth !== 'undefined') {
+          const result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
+          masterDocText = (result.value || '').trim();
+        }
+      }
+    } catch (e) {
+      console.warn('[AI Gen] Could not load master doc:', e.message);
+    }
+
+    // 2. Gather Job Task Details (EXCLUDING Documents tab: job.resume and job.coverLetter)
+    const title = (document.getElementById('editTitle')?.value || job.title || '').trim();
+    const company = (document.getElementById('editCompany')?.value || job.company || '').trim();
+    const status = (document.getElementById('editStatus')?.value || job.status || 'applied');
+    const dateApplied = (document.getElementById('editDate')?.value || job.dateApplied || '');
+    const url = (document.getElementById('editUrl')?.value || job.url || '').trim();
+
+    let jobContext = `JOB TASK INFORMATION:\n`;
+    jobContext += `- Target Position Title: ${title}\n`;
+    jobContext += `- Company Name: ${company}\n`;
+    jobContext += `- Application Status: ${status}\n`;
+    if (dateApplied) jobContext += `- Date Applied: ${dateApplied}\n`;
+    if (url) jobContext += `- Job Listing URL: ${url}\n`;
+
+    if (Array.isArray(job.notes) && job.notes.length > 0) {
+      jobContext += `\nUPDATE LOG & NOTES FOR THIS JOB:\n`;
+      job.notes.forEach((n, idx) => {
+        jobContext += `[Note ${idx + 1}] (${formatDateStr(n.timestamp)}): ${n.text}\n`;
+      });
+    }
+
+    if (Array.isArray(job.emails) && job.emails.length > 0) {
+      jobContext += `\nATTACHED EMAILS FOR THIS JOB:\n`;
+      job.emails.forEach((em, idx) => {
+        jobContext += `[Email ${idx + 1}] From: ${em.from} | Subject: ${em.subject} | Date: ${em.date}\n`;
+        if (em.body) {
+          const snippet = em.body.length > 500 ? em.body.substring(0, 500) + '...' : em.body;
+          jobContext += `  Body snippet: ${snippet}\n`;
+        }
+      });
+    }
+
+    let promptMessage = '';
+    if (docType === 'resume') {
+      promptMessage = `You are an expert executive resume writer. Your goal is to customize a high-impact, professional Resume tailored specifically for the position of "${title}" at "${company}".\n\n`;
+      if (masterDocText) {
+        promptMessage += `MASTER BASE RESUME (Use as candidate background, experience, skills, and base template):\n"""\n${masterDocText}\n"""\n\n`;
+      } else {
+        promptMessage += `(Note: No Master Resume .docx file uploaded. Generate a realistic, highly tailored professional resume for this applicant.)\n\n`;
+      }
+      promptMessage += `${jobContext}\n\n`;
+      promptMessage += `REQUIREMENTS:\n`;
+      promptMessage += `1. Tailor the candidate's summary, skills, and bullet points specifically to match the candidate's fit for ${title} at ${company}.\n`;
+      promptMessage += `2. Highlight relevant technical/functional competencies and incorporate details from the notes/emails if relevant.\n`;
+      promptMessage += `3. Output clean, semantic HTML suitable for rich text display (use <h1>, <h2>, <h3>, <p>, <ul>, <li>, <strong>, <em> tags).\n`;
+      promptMessage += `4. Do NOT wrap output in markdown code fences (like \`\`\`html). Return ONLY the raw HTML body content. Do not include <html> or <body> tags.`;
+    } else {
+      promptMessage += `You are an expert career consultant. Your goal is to write a compelling, tailored Cover Letter for the position of "${title}" at "${company}".\n\n`;
+      if (masterDocText) {
+        promptMessage += `MASTER BASE COVER LETTER (Use as style/tone guide and applicant details template):\n"""\n${masterDocText}\n"""\n\n`;
+      } else {
+        promptMessage += `(Note: No Master Cover Letter .docx file uploaded. Generate a compelling, professional cover letter tailored for this job.)\n\n`;
+      }
+      promptMessage += `${jobContext}\n\n`;
+      promptMessage += `REQUIREMENTS:\n`;
+      promptMessage += `1. Address the hiring team/manager at ${company} regarding the ${title} role.\n`;
+      promptMessage += `2. Highlight enthusiasm, key experience, and align with notes/emails from the application.\n`;
+      promptMessage += `3. Output clean, semantic HTML suitable for rich text display (use <h1>, <h2>, <p>, <ul>, <li>, <strong>, <em> tags).\n`;
+      promptMessage += `4. Do NOT wrap output in markdown code fences (like \`\`\`html). Return ONLY the raw HTML body content. Do not include <html> or <body> tags.`;
+    }
+
+    // 3. Call Open WebUI Chat Completion API via proxy
+    const response = await fetch('/api/chat-proxy/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': apiKey ? `Bearer ${apiKey}` : ''
+      },
+      body: JSON.stringify({
+        model: selectedModel,
+        messages: [
+          { role: 'system', content: 'You are an AI document generator that returns clean, semantic HTML for resumes and cover letters without markdown wrapping.' },
+          { role: 'user', content: promptMessage }
+        ],
+        stream: false
+      })
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      let errMsg = `AI server returned ${response.status}`;
+      try {
+        const errJson = JSON.parse(errText);
+        errMsg = errJson.error?.message || errJson.error || errMsg;
+      } catch (e) {}
+      throw new Error(errMsg);
+    }
+
+    const data = await response.json();
+    let generatedContent = data.choices?.[0]?.message?.content || '';
+
+    // Strip markdown code fences if model included them
+    generatedContent = generatedContent
+      .replace(/^```html\s*/i, '')
+      .replace(/^```\s*/, '')
+      .replace(/```\s*$/, '')
+      .trim();
+
+    if (!generatedContent) {
+      throw new Error('AI returned an empty document.');
+    }
+
+    // 4. Save to task and update Documents Tab
+    if (docType === 'resume') {
+      job.resume = generatedContent;
+      const editor = document.getElementById('resumeEditor');
+      if (editor) editor.innerHTML = generatedContent;
+      const hint = document.getElementById('resumeSavedHint');
+      if (hint) hint.textContent = 'AI Generated & Saved';
+    } else {
+      job.coverLetter = generatedContent;
+      const editor = document.getElementById('coverEditor');
+      if (editor) editor.innerHTML = generatedContent;
+      const hint = document.getElementById('coverSavedHint');
+      if (hint) hint.textContent = 'AI Generated & Saved';
+    }
+
+    // Switch to Documents tab and target subtab
+    switchRightTab('docs');
+    switchDocSubTab(docType === 'resume' ? 'resume' : 'cover');
+
+    // Persist changes
+    saveEditJob();
+
+    toast(`✨ Customized ${label} generated and saved to Documents tab!`, 'success');
+
+  } catch (err) {
+    console.error(`[AI Gen Error] ${label}:`, err);
+    toast(err.message || `Failed to generate ${label}`, 'error');
+  } finally {
+    if (btnEl) {
+      btnEl.disabled = false;
+      btnEl.innerHTML = origBtnHtml;
+    }
+  }
+}

@@ -526,6 +526,14 @@
       <div class="modal-footer edit-footer">
         <button class="btn-danger" onclick="deleteCurrentJob()">Delete Job</button>
         <div class="footer-spacer"></div>
+        <button class="btn-generate-ai" id="genResumeBtn" onclick="generateAiDocument('resume')" title="Generate customized resume using AI">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          Generate Resume
+        </button>
+        <button class="btn-generate-ai" id="genCoverBtn" onclick="generateAiDocument('cover')" title="Generate customized cover letter using AI">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          Generate Cover
+        </button>
         <button class="btn-export-pdf" id="exportPdfBtn" onclick="exportJobPdf()" title="Download a full PDF dossier of this job">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 15h6M9 11h6M9 19h4"/></svg>
           Export PDF
