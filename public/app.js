@@ -659,35 +659,18 @@ function downloadDoc(type) {
   const safeName = `${label} - ${job.company} - ${job.title}`.replace(/[/\\?%*:|"<>]/g, '-');
   const filename = `${safeName}.doc`;
 
-  // Submit via hidden form to server POST endpoint /api/download-doc for 100% reliable HTTP attachment download
-  let form = document.getElementById('downloadDocForm');
-  if (!form) {
-    form = document.createElement('form');
-    form.id = 'downloadDocForm';
-    form.method = 'POST';
-    form.action = '/api/download-doc';
-    form.style.display = 'none';
-
-    const inputHtml = document.createElement('input');
-    inputHtml.type = 'hidden';
-    inputHtml.name = 'html';
-    inputHtml.id = 'downloadDocFormHtml';
-    form.appendChild(inputHtml);
-
-    const inputFilename = document.createElement('input');
-    inputFilename.type = 'hidden';
-    inputFilename.name = 'filename';
-    inputFilename.id = 'downloadDocFormFilename';
-    form.appendChild(inputFilename);
-
-    document.body.appendChild(form);
+  // 1. Sync latest rich text edits to job task
+  if (type === 'resume') {
+    job.resume = html;
+  } else {
+    job.coverLetter = html;
   }
+  saveEditJob();
 
-  document.getElementById('downloadDocFormHtml').value = html;
-  document.getElementById('downloadDocFormFilename').value = filename;
-
-  form.submit();
-  toast(`📄 "${filename}" downloaded`, 'success');
+  // 2. Trigger standard GET request to backend server endpoint for direct download
+  // This bypasses browser extension message errors (e.g. Chrono "Could not establish connection")
+  window.location.href = `/api/jobs/${job.id}/download-doc/${type}`;
+  toast(`📄 Downloading "${filename}"...`, 'success');
 }
 
 // ── Emails ───────────────────────────────────────────────────────────────────

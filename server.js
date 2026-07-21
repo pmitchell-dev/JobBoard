@@ -1210,6 +1210,67 @@ app.get('/api/download-cache', (req, res) => {
   res.download(filepath, name || file);
 });
 
+// GET /api/jobs/:id/download-doc/:type  — server endpoint to stream saved resume/cover letter as .doc file
+app.get('/api/jobs/:id/download-doc/:type', (req, res) => {
+  const { id, type } = req.params;
+  const jobs = readJobs();
+  const job = jobs.find(j => j.id === id);
+
+  if (!job) return res.status(404).send('Job task not found');
+
+  const docType = type.toLowerCase();
+  const html = docType === 'resume' ? job.resume : job.coverLetter;
+
+  if (!html || !html.trim() || html === '<br>') {
+    return res.status(404).send(`No ${docType === 'resume' ? 'resume' : 'cover letter'} content found for this job.`);
+  }
+
+  const label = docType === 'resume' ? 'Resume' : 'Cover Letter';
+  const safeName = `${label} - ${job.company} - ${job.title}`.replace(/[/\\?%*:|"<>]/g, '-');
+  const safeFilename = `${safeName}.doc`;
+
+  const wordDoc = `
+<html xmlns:o="urn:schemas-microsoft-com:office:office"
+      xmlns:w="urn:schemas-microsoft-com:office:word"
+      xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+  <meta charset="utf-8" />
+  <!--[if gte mso 9]>
+  <xml>
+    <w:WordDocument>
+      <w:View>Print</w:View>
+      <w:Zoom>100</w:Zoom>
+    </w:WordDocument>
+  </xml>
+  <![endif]-->
+  <style>
+    body { font-family: Calibri, Arial, sans-serif; font-size: 11pt; line-height: 1.4; margin: 1in; color: #000; }
+    h1   { font-size: 16pt; font-weight: bold; margin-bottom: 6pt; }
+    h2   { font-size: 13pt; font-weight: bold; margin-bottom: 4pt; }
+    h3   { font-size: 11pt; font-weight: bold; margin-bottom: 3pt; }
+    p    { margin: 0 0 6pt; }
+    ul   { margin: 0 0 6pt 18pt; list-style-type: disc; }
+    ol   { margin: 0 0 6pt 18pt; }
+    li   { margin-bottom: 2pt; }
+    table { border-collapse: collapse; width: 100%; margin-bottom: 6pt; }
+    td, th { border: 1px solid #ccc; padding: 4pt 6pt; font-size: 10pt; }
+    a  { color: #1155cc; }
+    b, strong { font-weight: bold; }
+    i, em     { font-style: italic; }
+    u         { text-decoration: underline; }
+  </style>
+</head>
+<body>${html}</body>
+</html>`;
+
+  const buffer = Buffer.from('\ufeff' + wordDoc, 'utf8');
+
+  res.setHeader('Content-Type', 'application/msword; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodeURIComponent(safeFilename)}`);
+  res.setHeader('Content-Length', buffer.length);
+  res.send(buffer);
+});
+
 // POST /api/download-doc  — serve generated Word-compatible .doc file with server Content-Disposition headers
 app.post('/api/download-doc', express.urlencoded({ extended: true, limit: '10mb' }), (req, res) => {
   const { html, filename } = req.body;
