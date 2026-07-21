@@ -1287,53 +1287,142 @@ function escapeXml(str) {
 }
 
 function htmlToOpenXmlBody(html) {
-  let xml = '';
-  const cleanHtml = (html || '')
+  if (!html || !html.trim()) return '<w:p/>';
+
+  let clean = html
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
     .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, '')
     .replace(/<!--[\s\S]*?-->/g, '')
     .replace(/\r\n/g, '\n');
 
-  const blocks = cleanHtml.split(/(?=<h[1-3][^>]*>|<p[^>]*>|<li[^>]*>)/i);
+  let xml = '';
 
-  blocks.forEach(block => {
-    let text = block.trim();
-    if (!text) return;
+  // Extract and process HTML tables
+  const tableRegex = /<table[^>]*>([\s\S]*?)<\/table>/gi;
+  let lastIndex = 0;
+  let match;
 
-    let isH1 = false, isH2 = false, isH3 = false, isLi = false;
-
-    if (/^<h1/i.test(text)) { isH1 = true; text = text.replace(/^<h1[^>]*>/i, '').replace(/<\/h1>$/i, ''); }
-    else if (/^<h2/i.test(text)) { isH2 = true; text = text.replace(/^<h2[^>]*>/i, '').replace(/<\/h2>$/i, ''); }
-    else if (/^<h3/i.test(text)) { isH3 = true; text = text.replace(/^<h3[^>]*>/i, '').replace(/<\/h3>$/i, ''); }
-    else if (/^<li/i.test(text)) { isLi = true; text = text.replace(/^<li[^>]*>/i, '').replace(/<\/li>$/i, ''); }
-    else if (/^<p/i.test(text)) { text = text.replace(/^<p[^>]*>/i, '').replace(/<\/p>$/i, ''); }
-
-    text = text.replace(/<\/?(ul|ol|div|span)[^>]*>/gi, '');
-
-    const runsXml = parseInlineRuns(text, isH1, isH2, isH3);
-
-    let pPr = '';
-    if (isH1) {
-      pPr = '<w:pPr><w:pStyle w:val="Heading1"/><w:spacing w:before="240" w:after="120"/></w:pPr>';
-    } else if (isH2) {
-      pPr = '<w:pPr><w:pStyle w:val="Heading2"/><w:spacing w:before="180" w:after="80"/></w:pPr>';
-    } else if (isH3) {
-      pPr = '<w:pPr><w:pStyle w:val="Heading3"/><w:spacing w:before="120" w:after="60"/></w:pPr>';
-    } else if (isLi) {
-      pPr = '<w:pPr><w:spacing w:after="60"/><w:ind w:left="360"/></w:pPr>';
-    } else {
-      pPr = '<w:pPr><w:spacing w:after="120"/></w:pPr>';
+  while ((match = tableRegex.exec(clean)) !== null) {
+    const beforeText = clean.substring(lastIndex, match.index);
+    if (beforeText.trim()) {
+      xml += processBlockHtml(beforeText);
     }
-
-    xml += `<w:p>${pPr}${runsXml}</w:p>`;
-  });
-
-  if (!xml) {
-    xml = `<w:p><w:r><w:t>${escapeXml(decodeHtmlEntities(cleanHtml))}</w:t></w:r></w:p>`;
+    xml += processTableHtml(match[1]);
+    lastIndex = tableRegex.lastIndex;
   }
 
+  const remainingText = clean.substring(lastIndex);
+  if (remainingText.trim()) {
+    xml += processBlockHtml(remainingText);
+  }
+
+  return xml || '<w:p/>';
+}
+
+function processTableHtml(tableInnerHtml) {
+  let tblXml = '<w:tbl><w:tblPr><w:tblW w:w="5000" w:type="pct"/><w:tblBorders><w:top w:val="none"/><w:left w:val="none"/><w:bottom w:val="none"/><w:right w:val="none"/><w:insideH w:val="none"/><w:insideV w:val="none"/></w:tblBorders></w:tblPr>';
+
+  const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+  let rowMatch;
+
+  while ((rowMatch = rowRegex.exec(tableInnerHtml)) !== null) {
+    let rowXml = '<w:tr>';
+    const cellRegex = /<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi;
+    let cellMatch;
+
+    while ((cellMatch = cellRegex.exec(rowMatch[1])) !== null) {
+      const cellContent = cellMatch[1];
+      const innerBlocks = processBlockHtml(cellContent);
+      rowXml += `<w:tc><w:tcPr><w:tcW w:w="2500" w:type="pct"/></w:tcPr>${innerBlocks || '<w:p/>'}</w:tc>`;
+    }
+    rowXml += '</w:tr>';
+    tblXml += rowXml;
+  }
+
+  tblXml += '</w:tbl>';
+  return tblXml;
+}
+
+function processBlockHtml(htmlSnippet) {
+  let xml = '';
+  const textWithNewlines = htmlSnippet.replace(/<br\s*\/?>/gi, '\n');
+
+  const blockRegex = /(<h[1-6][^>]*>[\s\S]*?<\/h[1-6]>|<p[^>]*>[\s\S]*?<\/p>|<li[^>]*>[\s\S]*?<\/li>|<div[^>]*>[\s\S]*?<\/div>)/gi;
+  const blocks = textWithNewlines.split(blockRegex).filter(b => b && b.trim());
+
+  blocks.forEach(block => {
+    let trimmed = block.trim();
+    if (!trimmed) return;
+
+    if (/^<h1/i.test(trimmed)) {
+      const inner = trimmed.replace(/^<h1[^>]*>/i, '').replace(/<\/h1>$/i, '');
+      xml += createParagraphXml(inner, { style: 'Heading1', before: 240, after: 120 });
+    } else if (/^<h2/i.test(trimmed)) {
+      const inner = trimmed.replace(/^<h2[^>]*>/i, '').replace(/<\/h2>$/i, '');
+      xml += createParagraphXml(inner, { style: 'Heading2', before: 180, after: 80 });
+    } else if (/^<h3/i.test(trimmed)) {
+      const inner = trimmed.replace(/^<h3[^>]*>/i, '').replace(/<\/h3>$/i, '');
+      xml += createParagraphXml(inner, { style: 'Heading3', before: 120, after: 60 });
+    } else if (/^<li/i.test(trimmed)) {
+      const inner = trimmed.replace(/^<li[^>]*>/i, '').replace(/<\/li>$/i, '');
+      xml += createParagraphXml(inner, { isList: true, after: 60 });
+    } else if (/<span/i.test(trimmed) && (trimmed.includes('justify-content') || trimmed.includes('job-header') || trimmed.includes('job-sub') || trimmed.includes('between'))) {
+      const spans = trimmed.match(/<(?:span|p|div)[^>]*>([\s\S]*?)<\/(?:span|p|div)>/gi) || [];
+      if (spans.length >= 2) {
+        const leftText = spans[0].replace(/<[^>]*>/g, '');
+        const rightText = spans[spans.length - 1].replace(/<[^>]*>/g, '');
+        xml += createTabbedParagraphXml(leftText, rightText);
+      } else {
+        const inner = trimmed.replace(/<\/?(div|p)[^>]*>/gi, '');
+        xml += createParagraphXml(inner, { after: 120 });
+      }
+    } else {
+      const lines = trimmed.split('\n');
+      lines.forEach(line => {
+        const lineText = line.replace(/<\/?(p|div|ul|ol|section|article)[^>]*>/gi, '').trim();
+        if (lineText) {
+          xml += createParagraphXml(lineText, { after: 120 });
+        }
+      });
+    }
+  });
+
   return xml;
+}
+
+function createTabbedParagraphXml(leftText, rightText) {
+  const leftClean = escapeXml(decodeHtmlEntities(leftText.trim()));
+  const rightClean = escapeXml(decodeHtmlEntities(rightText.trim()));
+
+  return `<w:p>
+    <w:pPr>
+      <w:tabs><w:tab w:val="right" w:pos="9360"/></w:tabs>
+      <w:spacing w:before="60" w:after="80"/>
+    </w:pPr>
+    <w:r><w:rPr><w:b/><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr><w:t xml:space="preserve">${leftClean}</w:t></w:r>
+    <w:r><w:tab/></w:r>
+    <w:r><w:rPr><w:i/><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr><w:t xml:space="preserve">${rightClean}</w:t></w:r>
+  </w:p>`;
+}
+
+function createParagraphXml(innerHtml, opts = {}) {
+  let pPr = '<w:pPr>';
+  if (opts.style) {
+    pPr += `<w:pStyle w:val="${opts.style}"/>`;
+  }
+  if (opts.isList) {
+    pPr += '<w:spacing w:after="60"/><w:ind w:left="360"/>';
+  } else {
+    const before = opts.before !== undefined ? opts.before : 0;
+    const after = opts.after !== undefined ? opts.after : 120;
+    pPr += `<w:spacing w:before="${before}" w:after="${after}"/>`;
+  }
+  pPr += '</w:pPr>';
+
+  const runsXml = parseInlineRuns(innerHtml, opts.style === 'Heading1', opts.style === 'Heading2', opts.style === 'Heading3');
+
+  return `<w:p>${pPr}${runsXml}</w:p>`;
 }
 
 function parseInlineRuns(text, isH1, isH2, isH3) {
