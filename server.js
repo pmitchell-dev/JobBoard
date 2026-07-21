@@ -544,8 +544,10 @@ const masterDocsStorage = multer.diskStorage({
     cb(null, MASTER_DOCS_DIR);
   },
   filename: (req, file, cb) => {
-    const type = (req.body.docType || req.query.docType) === 'coverLetter' ? 'cover_letter' : 'resume';
-    cb(null, `master_${type}.docx`);
+    const rawType = (req.params?.type || req.body?.docType || req.query?.docType || '').toLowerCase();
+    const isCover = rawType.includes('cover');
+    const targetName = isCover ? 'master_cover_letter.docx' : 'master_resume.docx';
+    cb(null, targetName);
   }
 });
 
@@ -573,13 +575,14 @@ app.get('/api/master-docs', (req, res) => {
   });
 });
 
-// POST /api/master-docs/upload  — upload master .docx
-app.post('/api/master-docs/upload', (req, res) => {
+// POST /api/master-docs/upload (and /api/master-docs/upload/:type)  — upload master .docx
+app.post(['/api/master-docs/upload', '/api/master-docs/upload/:type'], (req, res) => {
   uploadMasterDoc.single('file')(req, res, (err) => {
     if (err) return res.status(400).json({ error: err.message });
     if (!req.file) return res.status(400).json({ error: 'No .docx file uploaded' });
 
-    const type = req.body.docType === 'coverLetter' ? 'coverLetter' : 'resume';
+    const rawType = (req.params?.type || req.body?.docType || req.query?.docType || '').toLowerCase();
+    const type = rawType.includes('cover') ? 'coverLetter' : 'resume';
     const meta = readMasterDocsMeta();
 
     meta[type] = {
@@ -597,8 +600,9 @@ app.post('/api/master-docs/upload', (req, res) => {
 
 // GET /api/master-docs/download/:type  — download master .docx
 app.get('/api/master-docs/download/:type', (req, res) => {
-  const type = req.params.type === 'coverLetter' ? 'coverLetter' : 'resume';
-  const fileName = type === 'coverLetter' ? 'master_cover_letter.docx' : 'master_resume.docx';
+  const isCover = (req.params.type || '').toLowerCase().includes('cover');
+  const type = isCover ? 'coverLetter' : 'resume';
+  const fileName = isCover ? 'master_cover_letter.docx' : 'master_resume.docx';
   const filePath = path.join(MASTER_DOCS_DIR, fileName);
   const meta = readMasterDocsMeta();
   const docMeta = meta[type];
@@ -612,8 +616,9 @@ app.get('/api/master-docs/download/:type', (req, res) => {
 
 // DELETE /api/master-docs/:type  — delete master .docx
 app.delete('/api/master-docs/:type', (req, res) => {
-  const type = req.params.type === 'coverLetter' ? 'coverLetter' : 'resume';
-  const fileName = type === 'coverLetter' ? 'master_cover_letter.docx' : 'master_resume.docx';
+  const isCover = (req.params.type || '').toLowerCase().includes('cover');
+  const type = isCover ? 'coverLetter' : 'resume';
+  const fileName = isCover ? 'master_cover_letter.docx' : 'master_resume.docx';
   const filePath = path.join(MASTER_DOCS_DIR, fileName);
 
   if (fs.existsSync(filePath)) {

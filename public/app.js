@@ -2981,7 +2981,7 @@ async function uploadMasterDocFile(type, file) {
     const label = type === 'coverLetter' ? 'Master Cover Letter' : 'Master Resume';
     toast(`Uploading ${label}...`, 'info');
 
-    const res = await fetch('/api/master-docs/upload', {
+    const res = await fetch(`/api/master-docs/upload/${type}`, {
       method: 'POST',
       body: formData
     });
