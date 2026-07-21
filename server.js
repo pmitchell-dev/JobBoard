@@ -1234,7 +1234,7 @@ app.get('/api/jobs/:id/download-doc/:type', (req, res) => {
 
   const label = docType === 'resume' ? 'Resume' : 'Cover Letter';
   const safeName = `${label} - ${job.company} - ${job.title}`.replace(/[/\\?%*:|"<>]/g, '-');
-  const safeFilename = `${safeName}.doc`;
+  const safeFilename = `${safeName}.docx`;
 
   const wordDoc = `
 <html xmlns:o="urn:schemas-microsoft-com:office:office"
@@ -1272,18 +1272,20 @@ app.get('/api/jobs/:id/download-doc/:type', (req, res) => {
 
   const buffer = Buffer.from('\ufeff' + wordDoc, 'utf8');
 
-  res.setHeader('Content-Type', 'application/msword; charset=utf-8');
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodeURIComponent(safeFilename)}`);
   res.setHeader('Content-Length', buffer.length);
   res.send(buffer);
 });
 
-// POST /api/download-doc  — serve generated Word-compatible .doc file with server Content-Disposition headers
+// POST /api/download-doc  — serve generated Word-compatible .docx file with server Content-Disposition headers
 app.post('/api/download-doc', express.urlencoded({ extended: true, limit: '10mb' }), (req, res) => {
   const { html, filename } = req.body;
   if (!html) return res.status(400).send('HTML content required');
 
-  const safeFilename = (filename || 'document.doc').replace(/[/\\?%*:|"<>]/g, '-');
+  let safeFilename = (filename || 'document.docx').replace(/[/\\?%*:|"<>]/g, '-');
+  if (!safeFilename.endsWith('.docx')) safeFilename += '.docx';
+
   const wordDoc = `
 <html xmlns:o="urn:schemas-microsoft-com:office:office"
       xmlns:w="urn:schemas-microsoft-com:office:word"
@@ -1320,7 +1322,7 @@ app.post('/api/download-doc', express.urlencoded({ extended: true, limit: '10mb'
 
   const buffer = Buffer.from('\ufeff' + wordDoc, 'utf8');
 
-  res.setHeader('Content-Type', 'application/msword; charset=utf-8');
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodeURIComponent(safeFilename)}`);
   res.setHeader('Content-Length', buffer.length);
   res.send(buffer);

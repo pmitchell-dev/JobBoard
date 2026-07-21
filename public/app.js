@@ -657,7 +657,7 @@ function downloadDoc(type) {
 
   const label    = type === 'resume' ? 'Resume' : 'Cover Letter';
   const safeName = `${label} - ${job.company} - ${job.title}`.replace(/[/\\?%*:|"<>]/g, '-');
-  const filename = `${safeName}.doc`;
+  const filename = `${safeName}.docx`;
 
   // 1. Sync latest rich text edits to job task
   if (type === 'resume') {
