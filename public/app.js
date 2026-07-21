@@ -3088,9 +3088,8 @@ async function generateAiDocument(docType) { // 'resume' | 'cover'
     toast(`Compiling context and generating customized ${label}...`, 'info');
 
     // ── Load AI settings ────────────────────────────────────────────────────
-    const chatSettings = JSON.parse(localStorage.getItem('chatCopilotSettings') || '{}');
-    const apiKey       = chatSettings.apiKey || '';
-    const selectedModel = chatSettings.modelSelection || '';
+    const apiKey        = localStorage.getItem('jobboard_chat_apikey') || '';
+    const selectedModel = localStorage.getItem('jobboard_chat_model') || '';
 
     // ── Gather Job context ──────────────────────────────────────────────────
     const title       = (document.getElementById('editTitle')?.value || job.title || '').trim();
