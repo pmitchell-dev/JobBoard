@@ -3055,6 +3055,20 @@ async function generateAiDocument(docType) { // 'resume' | 'cover'
     return;
   }
 
+  // Check if content already exists in the related documents tab
+  const targetEditorId = docType === 'resume' ? 'resumeEditor' : 'coverEditor';
+  const targetEditorEl = document.getElementById(targetEditorId);
+  const existingHtml = (docType === 'resume' ? job.resume : job.coverLetter) || (targetEditorEl ? targetEditorEl.innerHTML : '');
+  const existingText = (existingHtml || '').replace(/<[^>]*>/g, '').trim();
+
+  if (existingText.length > 0) {
+    const docLabel = docType === 'resume' ? 'Resume' : 'Cover Letter';
+    toast(`⚠️ A ${docLabel} already exists for this job. Please clear out the existing one before generating a new one.`, 'warning');
+    switchRightTab('docs');
+    switchDocSubTab(docType === 'resume' ? 'resume' : 'cover');
+    return;
+  }
+
   const apiKey = localStorage.getItem('jobboard_chat_apikey') || '';
   const label = docType === 'resume' ? 'Resume' : 'Cover Letter';
   const btnId = docType === 'resume' ? 'genResumeBtn' : 'genCoverBtn';
