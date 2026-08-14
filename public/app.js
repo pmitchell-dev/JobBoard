@@ -3139,23 +3139,49 @@ async function generateAiDocument(docType) { // 'resume' | 'cover'
         throw new Error('Could not read the master resume structure. Please try re-uploading your master resume.');
       }
 
-      // Step 2 — Build candidate real work history objects
-      const parsedJobs = (skeleton.experience || []).map(j => ({
-        title: j.title || 'Systems Engineer II / Data Analyst',
-        company: j.company || 'Cerner / Oracle Health',
-        sub: j.sub || 'Infrastructure & Backend Ops',
-        dates: j.dates || 'April 2017 – June 2026',
-        location: j.location || 'Kansas City, MO',
-        masterBullets: (j.masterBullets || []).slice(0, 5)
-      }));
+      // Step 2 — Build candidate real work history objects & defaults
+      const defaultCandidateJobs = [
+        {
+          key: "System Engineer II /Data Analyst (Infrastructure & Backend Ops) @ Cerner / Oracle Health",
+          title: "System Engineer II /Data Analyst (Infrastructure & Backend Ops)",
+          company: "Cerner / Oracle Health",
+          sub: "",
+          location: "Kansas City, MO",
+          dates: "April 2017 – June 2026",
+          masterBullets: [
+            "Deliver advanced tier-3 technical support across 10+ complex client environments, managing non-clinical backend infrastructure encompassing virtual Windows and Linux platforms.",
+            "Execute administrative operations within virtualized server topologies (VMware), creating/modifying VMs, executing snapshots/cloning, and managing shared storage (RAID, volume expansion, LUN provisioning).",
+            "Design and sustain complex TCP/IP networks, diagnosing deep routing problems, establishing static routes, creating vLANs, and enforcing security access controls.",
+            "Develop Python and PowerShell scripting architectures for efficient Windows automation while ensuring change control processes.",
+            "Perform complex infrastructure project assessments and estimations for large-scale data migrations; manage vendor escalations directly."
+          ]
+        },
+        {
+          key: "Network Administrator / IT Administrator @ Miller Eye Center",
+          title: "Network Administrator / IT Administrator",
+          company: "Miller Eye Center",
+          sub: "",
+          location: "Rockford, IL",
+          dates: "April 2014 – 2017",
+          masterBullets: [
+            "Supported a highly available local data network for 45+ endpoints and led hardware inventory mapping/scoping.",
+            "Directed the installation and ongoing performance management of collaborative communication systems (Avaya PBX, Microsoft Exchange).",
+            "Constructed and sustained a stable, virtualized server environment utilizing VMware to host critical Windows Server applications."
+          ]
+        }
+      ];
 
-      const roleList = parsedJobs.map(j =>
+      const realJobs = (Array.isArray(skeleton.experience) && skeleton.experience.length > 0)
+        ? skeleton.experience
+        : defaultCandidateJobs;
+
+      const roleList = realJobs.map(j =>
         `  - "${j.title}" at "${j.company}" (${j.dates} | ${j.location})`
       ).join('\n');
 
-      const bulletContext = parsedJobs.map(j => {
-        const bullets = (j.masterBullets || []).slice(0, 4).map(b => `    • ${b}`).join('\n');
-        return `  ${j.title} @ ${j.company}:\n${bullets}`;
+      const bulletContext = realJobs.map(j => {
+        const bullets = (j.masterBullets || []).slice(0, 5).map(b => `    • ${b}`).join('\n');
+        return `  KEY "${j.key}":\n${bullets}`;
       }).join('\n');
 
       const competencyCats = (() => {
@@ -3165,38 +3191,23 @@ async function generateAiDocument(docType) { // 'resume' | 'cover'
         return '"Systems & Automation", "Virtualization & Storage", "Networking & Administration"';
       })();
 
-      const experienceTemplateArray = JSON.stringify(parsedJobs.map(j => ({
-        title: j.title,
-        company: j.company,
-        sub: j.sub,
-        dates: j.dates,
-        location: j.location,
-        bullets: [
-          "Tailored bullet point 1 with measurable outcome...",
-          "Tailored bullet point 2...",
-          "Tailored bullet point 3...",
-          "Tailored bullet point 4..."
-        ]
-      })), null, 2);
+      const jobBulletsTemplate = realJobs.map(j =>
+        `    "${j.key}": [\n      "Tailored bullet point 1 with measurable outcome...",\n      "Tailored bullet point 2...",\n      "Tailored bullet point 3...",\n      "Tailored bullet point 4..."\n    ]`
+      ).join(',\n');
 
-      const systemRolePrompt = 'You are an expert career consultant and technical resume writer. You return ONLY valid JSON with no markdown, no explanation, no code fences. Every value is a string or array of strings or array of objects. YOU MUST KEEP 100% OF THE CANDIDATE\'S EXACT REAL JOB TITLES, REAL COMPANY NAMES, DATES, AND LOCATIONS. DO NOT INVENT FAKE COMPANIES OR TITLES.';
+      const systemRolePrompt = 'You are an expert career consultant and technical resume writer. You return ONLY valid JSON with no markdown, no explanation, no code fences. Every value is a string or array of strings or object.';
 
       const promptMessage =
-`Tailor the full resume content for the position: "${title}" at "${company}".
+`Tailor the resume bullet points and summary for the position: "${title}" at "${company}".
 
-STRICT MANDATORY RULES:
-1. YOU MUST USE THE CANDIDATE'S EXACT REAL JOB TITLES, REAL COMPANY NAMES, REAL DATES, AND REAL LOCATIONS PROVIDED BELOW IN "CANDIDATE REAL WORK HISTORY".
-2. DO NOT CHANGE, FABRICATE, OR SUBSTITUTE ANY COMPANY NAMES, JOB TITLES, DATES, OR LOCATIONS.
-3. Tailor ONLY the bullet points and professional summary text to highlight relevance to "${title}" at "${company}".
-
-CANDIDATE REAL WORK HISTORY & BACKGROUND:
-Name: ${skeleton.name || 'Patrick Mitchell'}
+CANDIDATE REAL WORK HISTORY:
+Name: ${skeleton.name || 'PATRICK MITCHELL'}
 Contact: ${skeleton.contact || 'Gladstone, MO | (515) 771-3320 | pmitchell.dev@gmail.com | GitHub: pmitchell-dev'}
 
-Real Past Positions:
+Positions to Tailor Bullets For:
 ${roleList}
 
-Master Bullet Points per Position:
+Master Bullet Points:
 ${bulletContext}
 
 ${jobContext}
@@ -3209,7 +3220,9 @@ Return ONLY this JSON object (no other text, no markdown fences):
     {"category": ${competencyCats.split(', ')[1] || '"Virtualization & Storage"'}, "skills": ["Skill A", "Skill B", "Skill C", "Skill D"]},
     {"category": ${competencyCats.split(', ')[2] || '"Networking & Administration"'}, "skills": ["Skill A", "Skill B", "Skill C", "Skill D"]}
   ],
-  "experience": ${experienceTemplateArray}
+  "jobBullets": {
+${jobBulletsTemplate}
+  }
 }`;
 
       // Step 3 — Call Gemini API
@@ -3238,7 +3251,7 @@ Return ONLY this JSON object (no other text, no markdown fences):
         throw new Error('AI returned an invalid response. Please try generating again.');
       }
 
-      // Step 5 — Assemble final HTML from locked skeleton + AI content
+      // Step 5 — Assemble final HTML from locked real jobs + AI tailored content
       toast('Assembling final resume...', 'info');
 
       const comps = aiData.competencies || [];
@@ -3257,44 +3270,30 @@ Return ONLY this JSON object (no other text, no markdown fences):
         compTable = `<table class="competencies-table"><thead><tr>${thCells}</tr></thead><tbody>${skillRows}</tbody></table>`;
       }
 
-      // Assemble experience section: prefer aiData.experience array, or map over skeleton.experience
-      let expHtml = '';
-      if (Array.isArray(aiData.experience) && aiData.experience.length > 0) {
-        expHtml = aiData.experience.map(job => {
-          const bulletList = Array.isArray(job.bullets) ? job.bullets : (job.masterBullets || []);
-          const liItems = bulletList.map(b => `<li>${b}</li>`).join('');
-          const subLine = [job.sub, job.company].filter(Boolean).join(' – ');
-          const rightText = [job.location, job.dates].filter(Boolean).join('  ');
-          return `
-            <div class="job-header"><span>${job.title || 'Position'}</span><span>${rightText}</span></div>
-            ${subLine ? `<div class="job-sub"><em>${subLine}</em></div>` : ''}
-            <ul>${liItems}</ul>`;
-        }).join('\n');
-      } else if (Array.isArray(skeleton.experience) && skeleton.experience.length > 0) {
-        const aiBullets = aiData.jobBullets || {};
-        expHtml = skeleton.experience.map(job => {
-          let bullets = aiBullets[job.key];
-          if (!bullets) {
-            const titleLower = (job.title || '').toLowerCase();
-            const fuzzyKey = Object.keys(aiBullets).find(k =>
-              k.toLowerCase().includes(titleLower) || titleLower.includes(k.toLowerCase().split('@')[0].trim())
-            );
-            bullets = fuzzyKey ? aiBullets[fuzzyKey] : null;
-          }
-          const bulletList = bullets || job.masterBullets || [];
-          const liItems = bulletList.map(b => `<li>${b}</li>`).join('');
-          const subLine = [job.sub, job.company].filter(Boolean).join(' – ');
-          const rightText = [job.location, job.dates].filter(Boolean).join('  ');
-          return `
-            <div class="job-header"><span>${job.title}</span><span>${rightText}</span></div>
-            ${subLine ? `<div class="job-sub"><em>${subLine}</em></div>` : ''}
-            <ul>${liItems}</ul>`;
-        }).join('\n');
-      }
+      // Assemble experience section strictly locked to realJobs titles & headers
+      const aiBullets = aiData.jobBullets || {};
+      const expHtml = realJobs.map(job => {
+        let bullets = aiBullets[job.key] || aiBullets[job.title];
+        if (!bullets) {
+          const titleLower = (job.title || '').toLowerCase();
+          const fuzzyKey = Object.keys(aiBullets).find(k =>
+            k.toLowerCase().includes(titleLower) || titleLower.includes(k.toLowerCase().split('@')[0].trim())
+          );
+          bullets = fuzzyKey ? aiBullets[fuzzyKey] : null;
+        }
+        const bulletList = (bullets && Array.isArray(bullets) && bullets.length > 0) ? bullets : job.masterBullets;
+        const liItems = bulletList.map(b => `<li>${b}</li>`).join('');
+        const subLine = [job.sub, job.company].filter(Boolean).join(' – ');
+        const rightText = [job.location, job.dates].filter(Boolean).join('  ');
+        return `
+          <div class="job-header"><span>${job.title}</span><span>${rightText}</span></div>
+          ${subLine ? `<div class="job-sub"><em>${subLine}</em></div>` : ''}
+          <ul>${liItems}</ul>`;
+      }).join('\n');
 
       const finalHtml = `
-<h1>${skeleton.name || 'Candidate'}</h1>
-<p class="contact">${skeleton.contact || ''}</p>
+<h1>${skeleton.name || 'PATRICK MITCHELL'}</h1>
+<p class="contact">${skeleton.contact || 'Gladstone, MO | (515) 771-3320 | pmitchell.dev@gmail.com | GitHub: pmitchell-dev'}</p>
 <h2>PROFESSIONAL SUMMARY</h2>
 <p>${aiData.summary || skeleton.summary || ''}</p>
 <h2>CORE COMPETENCIES</h2>

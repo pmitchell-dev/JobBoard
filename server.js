@@ -807,12 +807,26 @@ function parseExperienceSection(html, sections, stripTags) {
     const isBullet = /<li/i.test(rawHtml) || text.startsWith('•') || text.startsWith('-');
     const isSectionHeader = ['SUMMARY','COMPETENCIES','SKILLS','EXPERIENCE','PROJECT','EDUCATION'].some(s => text.toUpperCase().includes(s) && text.length < 50);
 
-    if (isSectionHeader) {
+    const isEducationOrName = (t) => {
+      const upper = t.toUpperCase().trim();
+      if (sections.name && upper.includes(sections.name.toUpperCase())) return true;
+      return upper.includes('BACHELOR') ||
+             upper.includes('ASSOCIATE') ||
+             upper.includes('MASTER') ||
+             upper.includes('UNIVERSITY') ||
+             upper.includes('COLLEGE') ||
+             upper.includes('DEGREE') ||
+             upper.includes('DIPLOMA') ||
+             upper.includes('GITHUB:') ||
+             upper.includes('@GMAIL.COM');
+    };
+
+    if (isSectionHeader || isEducationOrName(text)) {
       if (currentJob) { sections.experience.push(currentJob); currentJob = null; }
       return;
     }
 
-    if ((hasDate || hasBold) && text.length < 250 && !isBullet && !isSectionHeader) {
+    if ((hasDate || hasBold) && text.length < 250 && !isBullet && !isSectionHeader && !isEducationOrName(text)) {
       const dateMatch = text.match(datePattern);
       const dates = dateMatch ? dateMatch[1].trim() : '';
       const beforeDate = dates ? text.substring(0, text.indexOf(dates)).trim() : text;
