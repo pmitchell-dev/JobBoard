@@ -1456,11 +1456,15 @@ app.get('/api/download-cache', (req, res) => {
 // ── OpenXML .docx generator using Archiver ──────────────────────────────────
 function generateDocxBuffer(html) {
   return new Promise((resolve, reject) => {
-    const archive = archiver('zip', { zlib: { level: 6 } });
+    const createZip = typeof archiver === 'function' ? archiver : (archiver.create || archiver);
+    const archive = typeof createZip === 'function' ? createZip('zip', { zlib: { level: 6 } }) : new archiver.ZipArchive({ zlib: { level: 6 } });
     const buffers = [];
 
     archive.on('data', data => buffers.push(data));
-    archive.on('end', () => resolve(Buffer.concat(buffers)));
+    archive.on('end', () => {
+      const finalBuf = Buffer.concat(buffers);
+      resolve(finalBuf);
+    });
     archive.on('error', err => reject(err));
 
     const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -1468,15 +1472,205 @@ function generateDocxBuffer(html) {
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
   <Default Extension="xml" ContentType="application/xml"/>
   <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+  <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
+  <Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>
+  <Override PartName="/word/fontTable.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.fontTable+xml"/>
+  <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
+  <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
 </Types>`;
 
     const rels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>
 </Relationships>`;
 
     const docRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>`;
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/fontTable" Target="fontTable.xml"/>
+</Relationships>`;
+
+    const coreProps = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <dc:title>Professional Resume Document</dc:title>
+  <dc:subject>Curriculum Vitae / Resume</dc:subject>
+  <dc:creator>JobBoard ATS Resume Builder</dc:creator>
+  <cp:keywords>Resume, Professional Experience, Skills, Qualifications, Work History, Education, Cover Letter</cp:keywords>
+  <dc:description>Tailored professional application document formatted for ATS compatibility and human recruitment review.</dc:description>
+  <cp:lastModifiedBy>JobBoard</cp:lastModifiedBy>
+  <cp:revision>1</cp:revision>
+  <dcterms:created xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:created>
+  <dcterms:modified xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:modified>
+</cp:coreProperties>`;
+
+    const appProps = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
+  <Template>Normal.dotm</Template>
+  <TotalTime>1</TotalTime>
+  <Pages>1</Pages>
+  <Words>650</Words>
+  <Characters>4200</Characters>
+  <Application>Microsoft Office Word</Application>
+  <DocSecurity>0</DocSecurity>
+  <Lines>65</Lines>
+  <Paragraphs>30</Paragraphs>
+  <ScaleCrop>false</ScaleCrop>
+  <Company>JobBoard Professional Resume Systems</Company>
+  <LinksUpToDate>false</LinksUpToDate>
+  <SharedDoc>false</SharedDoc>
+  <HyperlinksChanged>false</HyperlinksChanged>
+  <AppVersion>16.0000</AppVersion>
+  <HeadingPairs>
+    <vt:vector size="2" baseType="variant">
+      <vt:variant><vt:lpstr>Title</vt:lpstr></vt:variant>
+      <vt:variant><vt:i4>1</vt:i4></vt:variant>
+    </vt:vector>
+  </HeadingPairs>
+  <TitlesOfParts>
+    <vt:vector size="1" baseType="lpstr">
+      <vt:lpstr>Resume Document</vt:lpstr>
+    </vt:vector>
+  </TitlesOfParts>
+</Properties>`;
+
+    const fontTableXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:fonts xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:font w:name="Calibri">
+    <w:panose1 w:val="020F0502020204030204"/>
+    <w:charset w:val="00"/>
+    <w:family w:val="swiss"/>
+    <w:pitch w:val="variable"/>
+  </w:font>
+  <w:font w:name="Arial">
+    <w:panose1 w:val="020B0604020202020204"/>
+    <w:charset w:val="00"/>
+    <w:family w:val="swiss"/>
+    <w:pitch w:val="variable"/>
+  </w:font>
+  <w:font w:name="Times New Roman">
+    <w:panose1 w:val="02020603050405020304"/>
+    <w:charset w:val="00"/>
+    <w:family w:val="roman"/>
+    <w:pitch w:val="variable"/>
+  </w:font>
+  <w:font w:name="Calibri Light">
+    <w:panose1 w:val="020F0302020204030204"/>
+    <w:charset w:val="00"/>
+    <w:family w:val="swiss"/>
+    <w:pitch w:val="variable"/>
+  </w:font>
+</w:fonts>`;
+
+    const settingsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:defaultTabStop w:val="720"/>
+  <w:characterSpacingControl w:val="doNotCompress"/>
+  <w:compat>
+    <w:doNotExpandShiftReturn/>
+    <w:spaceForUL/>
+    <w:balanceSingleByteDoubleByteWidth/>
+    <w:doNotLeaveBackslashAlone/>
+    <w:ulTrailSpace/>
+    <w:doNotExpandShiftReturn/>
+    <w:adjustLineHeightInTable/>
+  </w:compat>
+</w:settings>`;
+
+    const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:docDefaults>
+    <w:rPrDefault>
+      <w:rPr>
+        <w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/>
+        <w:sz w:val="22"/>
+        <w:szCs w:val="22"/>
+        <w:color w:val="222222"/>
+      </w:rPr>
+    </w:rPrDefault>
+    <w:pPrDefault>
+      <w:pPr>
+        <w:spacing w:after="120" w:line="276" w:lineRule="auto"/>
+      </w:pPr>
+    </w:pPrDefault>
+  </w:docDefaults>
+  <w:style w:type="paragraph" w:styleId="Normal" w:default="1">
+    <w:name w:val="Normal"/>
+    <w:qFormat/>
+  </w:style>
+  <w:style w:type="paragraph" w:styleId="Heading1">
+    <w:name w:val="heading 1"/>
+    <w:next w:val="Normal"/>
+    <w:qFormat/>
+    <w:pPr>
+      <w:keepNext/>
+      <w:spacing w:before="240" w:after="120"/>
+      <w:jc w:val="center"/>
+    </w:pPr>
+    <w:rPr>
+      <w:b/>
+      <w:sz w:val="32"/>
+      <w:szCs w:val="32"/>
+      <w:color w:val="111827"/>
+    </w:rPr>
+  </w:style>
+  <w:style w:type="paragraph" w:styleId="Heading2">
+    <w:name w:val="heading 2"/>
+    <w:next w:val="Normal"/>
+    <w:qFormat/>
+    <w:pPr>
+      <w:keepNext/>
+      <w:spacing w:before="200" w:after="100"/>
+      <w:pBdr><w:bottom w:val="single" w:sz="12" w:space="4" w:color="333333"/></w:pBdr>
+    </w:pPr>
+    <w:rPr>
+      <w:b/>
+      <w:sz w:val="26"/>
+      <w:szCs w:val="26"/>
+      <w:color w:val="1F2937"/>
+    </w:rPr>
+  </w:style>
+  <w:style w:type="paragraph" w:styleId="Heading3">
+    <w:name w:val="heading 3"/>
+    <w:next w:val="Normal"/>
+    <w:qFormat/>
+    <w:pPr>
+      <w:keepNext/>
+      <w:spacing w:before="140" w:after="60"/>
+    </w:pPr>
+    <w:rPr>
+      <w:b/>
+      <w:sz w:val="24"/>
+      <w:szCs w:val="24"/>
+      <w:color w:val="374151"/>
+    </w:rPr>
+  </w:style>
+  <w:style w:type="paragraph" w:styleId="ListBullet">
+    <w:name w:val="List Bullet"/>
+    <w:basedOn w:val="Normal"/>
+    <w:qFormat/>
+    <w:pPr>
+      <w:spacing w:after="60"/>
+      <w:ind w:left="360" w:hanging="200"/>
+    </w:pPr>
+  </w:style>
+  <w:style w:type="character" w:styleId="Strong">
+    <w:name w:val="Strong"/>
+    <w:qFormat/>
+    <w:rPr>
+      <w:b/>
+    </w:rPr>
+  </w:style>
+  <w:style w:type="character" w:styleId="Emphasis">
+    <w:name w:val="Emphasis"/>
+    <w:qFormat/>
+    <w:rPr>
+      <w:i/>
+    </w:rPr>
+  </w:style>
+</w:styles>`;
 
     const openXmlBody = htmlToOpenXmlBody(html);
 
@@ -1491,6 +1685,11 @@ function generateDocxBuffer(html) {
     archive.append(rels, { name: '_rels/.rels' });
     archive.append(docRels, { name: 'word/_rels/document.xml.rels' });
     archive.append(documentXml, { name: 'word/document.xml' });
+    archive.append(stylesXml, { name: 'word/styles.xml' });
+    archive.append(settingsXml, { name: 'word/settings.xml' });
+    archive.append(fontTableXml, { name: 'word/fontTable.xml' });
+    archive.append(coreProps, { name: 'docProps/core.xml' });
+    archive.append(appProps, { name: 'docProps/app.xml' });
 
     archive.finalize();
   });
