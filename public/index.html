@@ -674,15 +674,13 @@
   <!-- ── Floating Chat Panel ───────────────────────────────────────────── -->
   <div class="chat-panel" id="chatPanel" style="display:none">
     <div class="chat-header" id="chatHeader">
-      <div class="chat-title">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <div class="chat-header-title">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
         </svg>
-        AI Copilot
+        AI Copilot (Gemini API)
       </div>
       <div class="chat-header-actions">
-        <button class="chat-header-tab active" id="chatTabBtnUi" onclick="switchChatTab('ui')" title="Chat Interface">Chat</button>
-        <button class="chat-header-tab" id="chatTabBtnWeb" onclick="switchChatTab('web')" title="Open WebUI Dashboard">WebUI</button>
         <button class="chat-header-btn" id="chatSettingsBtn" onclick="toggleChatSettings()" title="Settings">⚙️</button>
         <button class="chat-close-btn" onclick="toggleChat()" aria-label="Close chat" title="Close">✕</button>
       </div>
@@ -691,35 +689,24 @@
     <!-- Settings Pane (Overlay within the panel) -->
     <div class="chat-settings-pane hidden" id="chatSettingsPane">
       <div class="chat-settings-header">
-        <strong>Copilot Settings</strong>
+        <strong>Copilot Settings (Gemini API)</strong>
         <button class="chat-settings-close" onclick="toggleChatSettings()">✕</button>
       </div>
       <div class="chat-settings-body">
-        <div class="form-row">
-          <div class="form-group" style="flex: 2;">
-            <label for="chatHost">Open WebUI Host / IP</label>
-            <input type="text" id="chatHost" placeholder="localhost" />
-          </div>
-          <div class="form-group" style="flex: 1;">
-            <label for="chatPort">Port</label>
-            <input type="number" id="chatPort" placeholder="3002" />
-          </div>
+        <div class="form-group">
+          <label>Webhost Gemini Service Endpoint</label>
+          <input type="text" id="chatGeminiEndpoint" value="http://192.168.50.217:5050/api/query" readonly style="opacity:0.8; font-family: monospace; font-size: 0.78rem;" />
+          <p class="field-hint">Backend service running on Webhost (`192.168.50.217:5050`). Auth is automatic.</p>
         </div>
-        <div class="form-group" style="margin-top: -4px;">
-          <button class="btn-secondary btn-sm" style="width: 100%;" onclick="verifyConnection()" id="chatVerifyBtn">Verify Connection</button>
+        <div class="form-group">
+          <button class="btn-secondary btn-sm" style="width: 100%;" onclick="verifyGeminiConnection()" id="chatVerifyBtn">Verify Service Health</button>
           <div id="verifyConnectionResult" class="field-hint" style="margin-top: 4px; text-align: center; font-weight: 500;"></div>
         </div>
         <div class="form-group">
-          <label for="chatApiKey">Open WebUI API Key</label>
-          <input type="password" id="chatApiKey" placeholder="sk-..." />
-          <p class="field-hint">Generate this in Open WebUI -> Settings -> Account -> API Keys.</p>
-        </div>
-        <div class="form-group">
-          <label for="chatModelSelect">Default Model</label>
+          <label for="chatModelSelect">Gemini Model</label>
           <select id="chatModelSelect">
-            <option value="">Loading models...</option>
+            <option value="gemini-flash-latest" selected>gemini-flash-latest (Default &amp; Recommended)</option>
           </select>
-          <button class="btn-secondary btn-sm" style="margin-top: 5px; width: fit-content;" onclick="refreshChatModels()">Refresh Models</button>
         </div>
         <div class="form-group">
           <label for="chatSystemPrompt">System Prompt Override</label>
@@ -731,11 +718,11 @@
       </div>
     </div>
 
-    <!-- Tab Content 1: Chat UI -->
+    <!-- Tab Content: Chat UI -->
     <div class="chat-tab-content" id="chatTabContentUi" style="position: relative;">
       <div class="chat-messages" id="chatMessages">
         <div class="chat-msg assistant">
-          <div class="chat-msg-text">Hi! I'm your JobBoard AI Assistant. I can help you summarize notes, draft emails, check your dashboard status, or write resumes. Ask me anything!</div>
+          <div class="chat-msg-text">Hi! I'm your JobBoard AI Assistant, powered directly by Gemini API. I can help you summarize notes, draft emails, check your dashboard status, or write resumes. Ask me anything!</div>
         </div>
       </div>
       
@@ -743,10 +730,7 @@
       <div class="chat-prompts-popup hidden" id="chatPromptsPopup"></div>
       
       <div class="chat-input-area">
-        <button class="chat-prompt-trigger-btn" id="chatPromptTriggerBtn" onclick="togglePromptsPopup(event)" title="Browse Open WebUI Prompts" aria-label="Browse Prompts">
-          <span>/</span>
-        </button>
-        <textarea id="chatInput" placeholder="Ask Copilot (type / for prompts)..." rows="1"></textarea>
+        <textarea id="chatInput" placeholder="Ask Copilot..." rows="1"></textarea>
         <button class="chat-send-btn" id="chatSendBtn" onclick="sendChatMessage()">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <line x1="22" y1="2" x2="11" y2="13"/>
@@ -754,11 +738,6 @@
           </svg>
         </button>
       </div>
-    </div>
-
-    <!-- Tab Content 2: Open WebUI Dashboard (Iframe) -->
-    <div class="chat-tab-content hidden" id="chatTabContentWeb">
-      <iframe class="chat-webui-iframe" id="chatWebuiIframe" src="" title="Open WebUI"></iframe>
     </div>
   </div>
 

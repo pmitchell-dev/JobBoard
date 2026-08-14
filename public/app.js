@@ -1780,13 +1780,72 @@ function initNotepadDrag() {
   });
 }
 
+// ── Webhost Gemini API Service Integration (192.168.50.217:5050) ──────────────
+const GEMINI_API_ENDPOINT = 'http://192.168.50.217:5050/api/query';
+
+/**
+ * Helper function to query Webhost Gemini API Service
+ * @param {string} promptText - User prompt text
+ * @param {string} systemInstruction - Optional persona/system guidance
+ * @param {string} modelName - Optional Gemini model name (default: gemini-flash-latest)
+ * @returns {Promise<string>} Generated text
+ */
+async function askGemini(promptText, systemInstruction = '', modelName = 'gemini-flash-latest') {
+  try {
+    const response = await fetch(GEMINI_API_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt: promptText,
+        model: modelName || 'gemini-flash-latest',
+        system_instruction: systemInstruction || ''
+      })
+    });
+
+    const data = await response.json();
+    if (response.ok && data.status === 'success') {
+      return data.result || '';
+    } else {
+      throw new Error(data.message || 'Error querying Webhost Gemini API Service');
+    }
+  } catch (error) {
+    console.error('[Gemini API Error]:', error);
+    throw new Error(error.message || 'Network error connecting to Webhost Gemini Service (http://192.168.50.217:5050)');
+  }
+}
+
+async function verifyGeminiConnection() {
+  const resultEl = document.getElementById('verifyConnectionResult');
+  const verifyBtn = document.getElementById('chatVerifyBtn');
+  if (resultEl) {
+    resultEl.textContent = 'Checking Gemini API Service...';
+    resultEl.style.color = '#a5b4fc';
+  }
+  if (verifyBtn) verifyBtn.disabled = true;
+
+  try {
+    const testResult = await askGemini('Health Check', 'Respond OK if online.');
+    if (resultEl) {
+      resultEl.textContent = '✓ Webhost Gemini Service online!';
+      resultEl.style.color = '#10b981';
+    }
+    toast('Webhost Gemini Service connected successfully!', 'success');
+  } catch (err) {
+    if (resultEl) {
+      resultEl.textContent = '✗ Service error: ' + err.message;
+      resultEl.style.color = '#ef4444';
+    }
+    toast('Error connecting to Webhost Gemini Service: ' + err.message, 'error');
+  } finally {
+    if (verifyBtn) verifyBtn.disabled = false;
+  }
+}
+
 // ── Chat Copilot ─────────────────────────────────────────────────────────────
 let chatVisible = false;
 let chatHistory = []; // { role: 'user' | 'assistant', content: string }
 let chatActiveRequest = false;
 const CHAT_POS_KEY = 'jobboard_chat_pos';
-let openWebUiHost = 'localhost';
-let openWebUiPort = 3002;
 
 function initChatCopilot() {
   const inputEl = document.getElementById('chatInput');
@@ -1797,11 +1856,10 @@ function initChatCopilot() {
   initChatDrag();
 
   // Load Settings
-  const savedApiKey = localStorage.getItem('jobboard_chat_apikey');
   const savedPrompt = localStorage.getItem('jobboard_chat_system_prompt');
-
-  if (savedApiKey) document.getElementById('chatApiKey').value = savedApiKey;
-  if (savedPrompt) document.getElementById('chatSystemPrompt').value = savedPrompt;
+  if (savedPrompt && document.getElementById('chatSystemPrompt')) {
+    document.getElementById('chatSystemPrompt').value = savedPrompt;
+  }
 
   // Load Settings from backend
   fetch('/api/settings')
@@ -2560,110 +2618,39 @@ async function sendChatMessage() {
   appendChatMessage('user', text);
   msgsEl.scrollTop = msgsEl.scrollHeight;
 
-  const apiKey = localStorage.getItem('jobboard_chat_apikey') || '';
-  const selectedModel = localStorage.getItem('jobboard_chat_model') || '';
+  const assistantMsgEl = document.createElement('div');
+  assistantMsgEl.className = 'chat-msg assistant';
+  assistantMsgEl.innerHTML = `<div class="chat-msg-text"><em>Thinking...</em></div>`;
+  msgsEl.appendChild(assistantMsgEl);
+  msgsEl.scrollTop = msgsEl.scrollHeight;
 
-  if (!selectedModel) {
-    appendChatMessage('assistant', `⚠️ Please configure a model in settings (⚙️) first. Make sure your local Open WebUI container is running at ${openWebUiHost}:${openWebUiPort}.`);
-    inputEl.disabled = false;
-    sendBtn.disabled = false;
-    chatActiveRequest = false;
-    inputEl.focus();
-    return;
-  }
+  const textEl = assistantMsgEl.querySelector('.chat-msg-text');
 
   try {
-    const allMessages = [
-      { role: 'system', content: generateChatSystemPrompt() }
-    ];
-    
-    const historySnippet = chatHistory.slice(-10);
-    historySnippet.forEach(msg => {
-      allMessages.push({ role: msg.role, content: msg.content });
-    });
+    const systemPrompt = generateChatSystemPrompt();
+    let promptMessage = text;
 
-    allMessages.push({ role: 'user', content: text });
-
-    const response = await fetch('/api/chat-proxy/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': apiKey ? `Bearer ${apiKey}` : ''
-      },
-      body: JSON.stringify({
-        model: selectedModel,
-        messages: allMessages,
-        stream: true
-      })
-    });
-
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(parseOpenWebUiError(errText, response.status));
+    if (chatHistory.length > 0) {
+      const historySnippet = chatHistory.slice(-6).map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n');
+      promptMessage = `CONVERSATION HISTORY:\n${historySnippet}\n\nUSER QUESTION:\n${text}`;
     }
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder('utf-8');
-    let done = false;
-    let currentText = '';
+    const modelName = localStorage.getItem('jobboard_chat_model') || 'gemini-flash-latest';
+    const aiResult = await askGemini(promptMessage, systemPrompt, modelName);
 
-    const assistantMsgEl = document.createElement('div');
-    assistantMsgEl.className = 'chat-msg assistant';
-    assistantMsgEl.innerHTML = `<div class="chat-msg-text"></div>`;
-    msgsEl.appendChild(assistantMsgEl);
-
-    const textEl = assistantMsgEl.querySelector('.chat-msg-text');
-
-    let buffer = '';
-    while (!done) {
-      const { value, done: readerDone } = await reader.read();
-      done = readerDone;
-      if (value) {
-        buffer += decoder.decode(value, { stream: !done });
-        const lines = buffer.split('\n');
-        buffer = lines.pop();
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed) continue;
-          if (trimmed === 'data: [DONE]') {
-            done = true;
-            break;
-          }
-          if (trimmed.startsWith('data: ')) {
-            try {
-              const dataJson = JSON.parse(trimmed.slice(6));
-              const content = dataJson.choices?.[0]?.delta?.content || '';
-              currentText += content;
-              textEl.innerHTML = formatMarkdown(currentText);
-              msgsEl.scrollTop = msgsEl.scrollHeight;
-            } catch (e) {}
-          }
-        }
-      }
-    }
-
-    if (buffer && buffer.trim().startsWith('data: ')) {
-      try {
-        const dataJson = JSON.parse(buffer.trim().slice(6));
-        const content = dataJson.choices?.[0]?.delta?.content || '';
-        currentText += content;
-        textEl.innerHTML = formatMarkdown(currentText);
-      } catch (e) {}
-    }
+    textEl.innerHTML = formatMarkdown(aiResult);
 
     chatHistory.push({ role: 'user', content: text });
-    chatHistory.push({ role: 'assistant', content: currentText });
+    chatHistory.push({ role: 'assistant', content: aiResult });
     saveChatHistoryToSession();
-
   } catch (err) {
     console.error('Chat error:', err);
-    const errMsg = err.message.startsWith('⚠️') ? err.message : `❌ ${err.message}`;
-    appendChatMessage('assistant', errMsg);
+    textEl.innerHTML = `<span style="color:#ef4444;">⚠️ AI Error: ${esc(err.message)}</span>`;
   } finally {
     inputEl.disabled = false;
     sendBtn.disabled = false;
     chatActiveRequest = false;
+    msgsEl.scrollTop = msgsEl.scrollHeight;
     inputEl.focus();
   }
 }
@@ -3069,7 +3056,7 @@ function formatBytes(bytes) {
   return (bytes / 1024 / 1024).toFixed(1) + ' MB';
 }
 
-// ── AI Document Generation (.docx / HTML) ───────────────────────────────────
+// ── AI Document Generation (.docx / HTML via Gemini API) ────────────────────
 async function generateAiDocument(docType) { // 'resume' | 'cover'
   if (!activeJobId) {
     toast('No active job task selected.', 'error');
@@ -3079,13 +3066,6 @@ async function generateAiDocument(docType) { // 'resume' | 'cover'
   const job = jobs.find(j => j.id === activeJobId);
   if (!job) {
     toast('Job task not found.', 'error');
-    return;
-  }
-
-  const selectedModel = localStorage.getItem('jobboard_chat_model') || '';
-  if (!selectedModel) {
-    toast('Please select an AI Model in Copilot settings (⚙️) first.', 'error');
-    toggleChatSettings();
     return;
   }
 
@@ -3103,7 +3083,6 @@ async function generateAiDocument(docType) { // 'resume' | 'cover'
     return;
   }
 
-  const apiKey = localStorage.getItem('jobboard_chat_apikey') || '';
   const label = docType === 'resume' ? 'Resume' : 'Cover Letter';
   const btnId = docType === 'resume' ? 'genResumeBtn' : 'genCoverBtn';
   const btnEl = document.getElementById(btnId);
@@ -3116,10 +3095,6 @@ async function generateAiDocument(docType) { // 'resume' | 'cover'
 
   try {
     toast(`Compiling context and generating customized ${label}...`, 'info');
-
-    // ── Load AI settings ────────────────────────────────────────────────────
-    const apiKey        = localStorage.getItem('jobboard_chat_apikey') || '';
-    const selectedModel = localStorage.getItem('jobboard_chat_model') || '';
 
     // ── Gather Job context ──────────────────────────────────────────────────
     const title       = (document.getElementById('editTitle')?.value || job.title || '').trim();
@@ -3175,7 +3150,6 @@ async function generateAiDocument(docType) { // 'resume' | 'cover'
       }).join('\n');
 
       const competencyCats = (() => {
-        // Try to extract categories from the competencies HTML
         const catMatches = [...(skeleton.competenciesHtml || '').matchAll(/<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/gi)];
         const cats = catMatches.map(m => m[1].replace(/<[^>]*>/g, '').trim()).filter(c => c && c.length > 2);
         if (cats.length >= 3) return cats.slice(0, 3).map(c => `"${c}"`).join(', ');
@@ -3217,31 +3191,10 @@ ${jobBulletsTemplate}
   }
 }`;
 
-      // Step 3 — Call AI
-      toast('Sending to AI for content tailoring...', 'info');
-      const response = await fetch('/api/chat-proxy/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': apiKey ? `Bearer ${apiKey}` : ''
-        },
-        body: JSON.stringify({
-          model: selectedModel,
-          messages: [
-            { role: 'system', content: systemRolePrompt },
-            { role: 'user',   content: promptMessage }
-          ],
-          stream: false
-        })
-      });
-
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(parseOpenWebUiError(errText, response.status));
-      }
-
-      const data = await response.json();
-      let rawAi = data.choices?.[0]?.message?.content || '';
+      // Step 3 — Call Gemini API
+      toast('Sending to Gemini API for content tailoring...', 'info');
+      const modelName = localStorage.getItem('jobboard_chat_model') || 'gemini-flash-latest';
+      let rawAi = await askGemini(promptMessage, systemRolePrompt, modelName);
 
       // Step 4 — Parse AI JSON with fallback for markdown fences
       rawAi = rawAi
@@ -3250,7 +3203,6 @@ ${jobBulletsTemplate}
         .replace(/```\s*$/,      '')
         .trim();
 
-      // Extract the outermost JSON object in case the AI prepended text
       const jsonStart = rawAi.indexOf('{');
       const jsonEnd   = rawAi.lastIndexOf('}');
       if (jsonStart !== -1 && jsonEnd !== -1) {
@@ -3268,7 +3220,6 @@ ${jobBulletsTemplate}
       // Step 5 — Assemble final HTML from locked skeleton + AI content
       toast('Assembling final resume...', 'info');
 
-      // Build competencies as a proper 3-column side-by-side table
       const comps = aiData.competencies || [];
       let compTable = '';
       if (comps.length > 0) {
@@ -3285,10 +3236,8 @@ ${jobBulletsTemplate}
         compTable = `<table class="competencies-table"><thead><tr>${thCells}</tr></thead><tbody>${skillRows}</tbody></table>`;
       }
 
-      // Build experience section — fuzzy-match AI bullet keys to skeleton jobs
       const aiBullets = aiData.jobBullets || {};
       const expHtml = skeleton.experience.map(job => {
-        // Try exact key first, then fuzzy match by job title
         let bullets = aiBullets[job.key];
         if (!bullets) {
           const titleLower = (job.title || '').toLowerCase();
@@ -3307,7 +3256,6 @@ ${jobBulletsTemplate}
           <ul>${liItems}</ul>`;
       }).join('\n');
 
-      // Assemble full resume HTML
       const finalHtml = `
 <h1>${skeleton.name}</h1>
 <p class="contact">${skeleton.contact}</p>
@@ -3320,7 +3268,6 @@ ${expHtml}
 ${skeleton.projectsHtml ? `<h2>TECHNICAL PROJECTS</h2>\n${skeleton.projectsHtml}` : ''}
 ${skeleton.educationHtml ? `<h2>EDUCATION</h2>\n${skeleton.educationHtml}` : ''}`.trim();
 
-      // Save & display
       job.resume = finalHtml;
       const editor = document.getElementById('resumeEditor');
       if (editor) editor.innerHTML = finalHtml;
@@ -3333,11 +3280,10 @@ ${skeleton.educationHtml ? `<h2>EDUCATION</h2>\n${skeleton.educationHtml}` : ''}
       toast(`✨ Customized Resume generated and saved to Documents tab!`, 'success');
 
     // ══════════════════════════════════════════════════════════════════════
-    //  COVER LETTER — Full Generation (unchanged)
+    //  COVER LETTER — Full Generation
     // ══════════════════════════════════════════════════════════════════════
     } else {
 
-      // Load master cover letter HTML (if available)
       let masterDocText = '';
       try {
         const res = await fetch('/api/master-docs/download/coverLetter');
@@ -3365,29 +3311,10 @@ ${skeleton.educationHtml ? `<h2>EDUCATION</h2>\n${skeleton.educationHtml}` : ''}
       promptMessage += `4. Output clean semantic HTML (use <h1>, <h2>, <p>, <ul>, <li>, <strong>, <em>).\n`;
       promptMessage += `5. Do NOT wrap in markdown fences. Return ONLY raw HTML body content.`;
 
-      const response = await fetch('/api/chat-proxy/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': apiKey ? `Bearer ${apiKey}` : ''
-        },
-        body: JSON.stringify({
-          model: selectedModel,
-          messages: [
-            { role: 'system', content: systemRolePrompt },
-            { role: 'user',   content: promptMessage }
-          ],
-          stream: false
-        })
-      });
+      toast('Sending to Gemini API for cover letter generation...', 'info');
+      const modelName = localStorage.getItem('jobboard_chat_model') || 'gemini-flash-latest';
+      let generatedContent = await askGemini(promptMessage, systemRolePrompt, modelName);
 
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(parseOpenWebUiError(errText, response.status));
-      }
-
-      const data = await response.json();
-      let generatedContent = data.choices?.[0]?.message?.content || '';
       generatedContent = generatedContent
         .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
         .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
