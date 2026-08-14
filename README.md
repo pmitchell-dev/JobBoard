@@ -14,10 +14,10 @@
 |---|---|
 | **Kanban Board** | Drag cards between Applied → Screening → Interview → Offer → Rejected |
 | **Date Filtering** | Filter by today, yesterday, last 7/14/30 days, or a custom range |
-| **Master Base Documents** | Upload generic `.docx` Master Resume and Master Cover Letter base templates on the main dashboard |
-| **AI Resume & Cover Letter Generation** | Click **Generate Resume** or **Generate Cover** in any job task to create tailored `.docx` documents saved directly to the task's Documents tab |
-| **AI Copilot & Open WebUI** | Built-in chat assistant proxied to your local Open WebUI instance with prompt templates |
-| **Job Detail Modal** | Edit title, company, status, URL, date, and screenshots per application |
+| **Full-Width Job Modal** | Full-width tabbed layout across General Info, Notes, Emails, Resume, Cover Letter, & Attachments |
+| **Master Base Documents** | Upload generic `.docx` Master Resume and Master Cover Letter base templates on main dashboard |
+| **AI Resume & Cover Letter Generation** | Tailor Resumes & Cover Letters powered directly by Webhost Gemini API Service |
+| **AI Copilot** | Integrated chat assistant powered directly by Webhost Gemini API Service (`192.168.50.217:5050`) |
 | **Notes & Update Log** | Timestamped notes per job with delete support |
 | **Email Attachment** | Drag `.eml` files from Thunderbird or enter emails manually |
 | **PDF Page Cache** | Saves the job listing page as a PDF via headless Chromium |
@@ -95,18 +95,18 @@ Open **http://localhost:3000**.
 
 ## AI Functionality & Setup
 
-JobBoard features AI-powered document generation and an integrated AI Copilot powered by your local or remote **Open WebUI** instance.
+JobBoard features AI-powered document generation and an integrated AI Copilot powered directly by the dedicated **Webhost Gemini API Service** (`http://192.168.50.217:5050/api/query`).
 
-### Prerequisites & Configuration for AI Features
+### Service Integration & Features
 
-1. **Open WebUI Container / Server**:
-   - Ensure an Open WebUI container is running (default: `localhost:3002` or host IP).
-2. **API Key**:
-   - Obtain an API key from Open WebUI: **Settings → Account → API Keys → Create API Key**.
-3. **Configure in JobBoard**:
-   - Click the **AI Copilot** button (bottom right) or Settings icon (`⚙️`).
-   - Enter your Open WebUI **Host / IP**, **Port** (e.g. `3002`), and **API Key**.
-   - Click **Verify Connection** and select your preferred **Default Model** (e.g., `llama3.2`, `mistral`, `qwen2.5`, `claude-3-5-sonnet`).
+1. **Webhost Gemini API Service**:
+   - Communication is handled via `POST http://192.168.50.217:5050/api/query`.
+   - **Authentication**: Handled automatically on the Webhost server (no API keys required in browser `localStorage`).
+   - **Default Model**: `gemini-flash-latest` (fast, reliable, and tailored for resume/cover letter generation).
+
+2. **AI Copilot Chat**:
+   - Integrated floating chat assistant on the bottom-right of the screen.
+   - Summarizes job notes, drafts emails, answers application questions, and analyzes target positions using direct Gemini queries.
 
 ### How AI Document Generation Works
 
@@ -116,9 +116,9 @@ JobBoard features AI-powered document generation and an integrated AI Copilot po
    - Open any job task detail modal.
    - Click **✨ Generate Resume** or **✨ Generate Cover** in the modal footer.
 3. **Context Assembly & Execution**:
-   - JobBoard compiles position title, company, listing URL, update log notes, and attached emails (excluding existing document tab text) along with the parsed text from your Master `.docx` file.
-   - The AI model generates a customized document tailored specifically for the target position.
-   - The generated document is saved automatically into the task's **Documents** tab (`Resume` or `Cover Letter` subtab) where it can be further edited or downloaded as a `.doc` file.
+   - JobBoard compiles position title, company, listing URL, update log notes, and attached emails along with the parsed text from your Master `.docx` file.
+   - The Gemini API model generates customized content tailored specifically for the target position.
+   - The generated document is saved automatically into the task's **Resume** or **Cover Letter** tab where it can be further edited or downloaded as a `.doc` file.
 
 ---
 
