@@ -271,7 +271,18 @@
             <img id="addScreenshotPreview" class="screenshot-img hidden" src="" alt="Screenshot preview" />
             <button class="screenshot-remove hidden" id="addScreenshotRemoveBtn" onclick="clearAddScreenshot(event)" title="Remove">&#x2715;</button>
           </div>
-          <input type="  <div class="modal-overlay hidden" id="editModal" onclick="handleOverlayClick(event,'editModal')">
+          <input type="file" id="addScreenshotFileInput" accept="image/*" class="hidden" onchange="onAddScreenshotFileChange(event)" />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeAddModal()">Cancel</button>
+        <button class="btn-primary" id="saveAddBtn" onclick="saveNewJob()">Save Job</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Edit / Detail Modal ───────────────────────────────────────────── -->
+  <div class="modal-overlay hidden" id="editModal" onclick="handleOverlayClick(event,'editModal')">
     <div class="modal modal-lg edit-modal-container" role="dialog" aria-modal="true" aria-labelledby="editModalTitle">
 
       <div class="modal-header edit-header">
