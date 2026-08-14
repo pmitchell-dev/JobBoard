@@ -812,27 +812,49 @@ function parseExperienceSection(html, sections, stripTags) {
       return;
     }
 
-    if (hasDate && hasBold && text.length < 200) {
-      // New job header line — save previous job first
-      if (currentJob) sections.experience.push(currentJob);
-
-      // Parse: "Job Title   City, ST   Month YYYY – Month YYYY"
-      // Split by tab or multiple spaces or | or date boundary
-      const parts = text.split(/\t|\s{2,}|\|/);
+    if ((hasDate || hasBold) && text.length < 250 && !isBullet && !isSectionHeader) {
       const dateMatch = text.match(datePattern);
       const dates = dateMatch ? dateMatch[1].trim() : '';
       const beforeDate = dates ? text.substring(0, text.indexOf(dates)).trim() : text;
-      const subParts = beforeDate.split(/\t|\s{2,}|\|/).map(s => s.trim()).filter(Boolean);
-      const jobTitle = subParts[0] || beforeDate;
-      const location = subParts[subParts.length - 1] !== jobTitle ? subParts[subParts.length - 1] : '';
 
-      currentJob = { key: jobTitle, title: jobTitle, company: '', sub: '', location, dates, masterBullets: [] };
+      // Extract parts separated by tabs, multiple spaces, or vertical bars |
+      const subParts = beforeDate.split(/\t|\s{2,}|\|/).map(s => s.trim()).filter(Boolean);
+      let rawTitleComp = subParts[0] || beforeDate;
+      let location = subParts.length > 1 ? subParts[subParts.length - 1] : '';
+
+      let jobTitle = rawTitleComp;
+      let company = '';
+
+      // Check for dash separator in rawTitleComp (e.g., "Title – Company")
+      const dashMatch = rawTitleComp.match(/^(.+?)\s*[-–—]\s*(.+)$/);
+      if (dashMatch) {
+        jobTitle = dashMatch[1].trim();
+        company = dashMatch[2].trim();
+      }
+
+      if (currentJob) sections.experience.push(currentJob);
+
+      currentJob = {
+        key: `${jobTitle} @ ${company || 'Company'}`,
+        title: jobTitle,
+        company: company,
+        sub: '',
+        location: location,
+        dates: dates,
+        masterBullets: []
+      };
 
     } else if (currentJob && isItalic && !currentJob.sub && text.length < 150) {
       // Sub-line: "(Department) – Company Name"
       const companyMatch = text.match(/[-–—]\s*(.+)$/);
-      currentJob.company = companyMatch ? companyMatch[1].trim() : text;
-      currentJob.sub = companyMatch ? text.replace(/[-–—]\s*.+$/, '').trim() : '';
+      if (companyMatch && !currentJob.company) {
+        currentJob.company = companyMatch[1].trim();
+        currentJob.sub = text.replace(/[-–—]\s*.+$/, '').trim();
+      } else if (!currentJob.company) {
+        currentJob.company = text;
+      } else {
+        currentJob.sub = text;
+      }
       currentJob.key = `${currentJob.title} @ ${currentJob.company || currentJob.title}`;
 
     } else if (currentJob && text.length > 20 && !hasDate) {
@@ -841,16 +863,6 @@ function parseExperienceSection(html, sections, stripTags) {
       if (cleanBullet.length > 10) {
         currentJob.masterBullets.push(cleanBullet);
       }
-
-    } else if (!currentJob && hasDate && text.length < 200) {
-      // Job header without bold (plain text header)
-      const dateMatch2 = text.match(datePattern);
-      const dates = dateMatch2 ? dateMatch2[1].trim() : '';
-      const beforeDate2 = dates ? text.substring(0, text.indexOf(dates)).trim() : text;
-      const subParts2 = beforeDate2.split(/\t|\s{2,}|\|/).map(s => s.trim()).filter(Boolean);
-      const jobTitle = subParts2[0] || text;
-      const location = subParts2.length > 1 ? subParts2[subParts2.length - 1] : '';
-      currentJob = { key: jobTitle, title: jobTitle, company: '', sub: '', location, dates, masterBullets: [] };
     }
   });
 

@@ -3139,44 +3139,65 @@ async function generateAiDocument(docType) { // 'resume' | 'cover'
         throw new Error('Could not read the master resume structure. Please try re-uploading your master resume.');
       }
 
-      // Step 2 — Build minimal AI prompt (JSON output only)
-      const roleList = skeleton.experience.map(j =>
-        `  - ${j.title} at ${j.company} (${j.dates})`
+      // Step 2 — Build candidate real work history objects
+      const parsedJobs = (skeleton.experience || []).map(j => ({
+        title: j.title || 'Systems Engineer II / Data Analyst',
+        company: j.company || 'Cerner / Oracle Health',
+        sub: j.sub || 'Infrastructure & Backend Ops',
+        dates: j.dates || 'April 2017 – June 2026',
+        location: j.location || 'Kansas City, MO',
+        masterBullets: (j.masterBullets || []).slice(0, 5)
+      }));
+
+      const roleList = parsedJobs.map(j =>
+        `  - "${j.title}" at "${j.company}" (${j.dates} | ${j.location})`
       ).join('\n');
 
-      const bulletContext = skeleton.experience.map(j => {
+      const bulletContext = parsedJobs.map(j => {
         const bullets = (j.masterBullets || []).slice(0, 4).map(b => `    • ${b}`).join('\n');
-        return `  ${j.key}:\n${bullets}`;
+        return `  ${j.title} @ ${j.company}:\n${bullets}`;
       }).join('\n');
 
       const competencyCats = (() => {
         const catMatches = [...(skeleton.competenciesHtml || '').matchAll(/<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/gi)];
         const cats = catMatches.map(m => m[1].replace(/<[^>]*>/g, '').trim()).filter(c => c && c.length > 2);
         if (cats.length >= 3) return cats.slice(0, 3).map(c => `"${c}"`).join(', ');
-        return '"Category 1", "Category 2", "Category 3"';
+        return '"Systems & Automation", "Virtualization & Storage", "Networking & Administration"';
       })();
 
-      const jobBulletsTemplate = skeleton.experience.map(j =>
-        `    "${j.key}": ["Bullet 1 with bold title: detail...", "Bullet 2...", "..."]`
-      ).join(',\n');
+      const experienceTemplateArray = JSON.stringify(parsedJobs.map(j => ({
+        title: j.title,
+        company: j.company,
+        sub: j.sub,
+        dates: j.dates,
+        location: j.location,
+        bullets: [
+          "Tailored bullet point 1 with measurable outcome...",
+          "Tailored bullet point 2...",
+          "Tailored bullet point 3...",
+          "Tailored bullet point 4..."
+        ]
+      })), null, 2);
 
-      const systemRolePrompt = 'You are a professional resume content writer. You return ONLY valid JSON with no markdown, no explanation, no code fences. Every value is a string or array of strings or array of objects.';
+      const systemRolePrompt = 'You are an expert career consultant and technical resume writer. You return ONLY valid JSON with no markdown, no explanation, no code fences. Every value is a string or array of strings or array of objects. YOU MUST KEEP 100% OF THE CANDIDATE\'S EXACT REAL JOB TITLES, REAL COMPANY NAMES, DATES, AND LOCATIONS. DO NOT INVENT FAKE COMPANIES OR TITLES.';
 
       const promptMessage =
 `Tailor the full resume content for the position: "${title}" at "${company}".
 
-CRITICAL INSTRUCTION: You MUST include full detailed JOB EXPERIENCE (Work History) for every position. Do NOT omit past positions or employment history.
+STRICT MANDATORY RULES:
+1. YOU MUST USE THE CANDIDATE'S EXACT REAL JOB TITLES, REAL COMPANY NAMES, REAL DATES, AND REAL LOCATIONS PROVIDED BELOW IN "CANDIDATE REAL WORK HISTORY".
+2. DO NOT CHANGE, FABRICATE, OR SUBSTITUTE ANY COMPANY NAMES, JOB TITLES, DATES, OR LOCATIONS.
+3. Tailor ONLY the bullet points and professional summary text to highlight relevance to "${title}" at "${company}".
 
-CANDIDATE BACKGROUND:
-Name: ${skeleton.name || 'Candidate'}
-Past Roles:
-${roleList || 'System Administrator / Software Developer / IT Specialist'}
+CANDIDATE REAL WORK HISTORY & BACKGROUND:
+Name: ${skeleton.name || 'Patrick Mitchell'}
+Contact: ${skeleton.contact || 'Gladstone, MO | (515) 771-3320 | pmitchell.dev@gmail.com | GitHub: pmitchell-dev'}
 
-Master Professional Summary (tailor this for the target role):
-  ${skeleton.summary || 'Experienced professional with background in IT, web applications, and system operations.'}
+Real Past Positions:
+${roleList}
 
-Master Bullet Points per Role (tailor and prioritize; keep 4-6 per job):
-${bulletContext || 'Key achievements, technical implementations, system management, team collaboration.'}
+Master Bullet Points per Position:
+${bulletContext}
 
 ${jobContext}
 
@@ -3184,28 +3205,11 @@ Return ONLY this JSON object (no other text, no markdown fences):
 {
   "summary": "3-5 sentence tailored professional summary paragraph.",
   "competencies": [
-    {"category": ${competencyCats.split(', ')[0] || '"Category 1"'}, "skills": ["Skill A", "Skill B", "Skill C", "Skill D"]},
-    {"category": ${competencyCats.split(', ')[1] || '"Category 2"'}, "skills": ["Skill A", "Skill B", "Skill C", "Skill D"]},
-    {"category": ${competencyCats.split(', ')[2] || '"Category 3"'}, "skills": ["Skill A", "Skill B", "Skill C", "Skill D"]}
+    {"category": ${competencyCats.split(', ')[0] || '"Systems & Automation"'}, "skills": ["Skill A", "Skill B", "Skill C", "Skill D"]},
+    {"category": ${competencyCats.split(', ')[1] || '"Virtualization & Storage"'}, "skills": ["Skill A", "Skill B", "Skill C", "Skill D"]},
+    {"category": ${competencyCats.split(', ')[2] || '"Networking & Administration"'}, "skills": ["Skill A", "Skill B", "Skill C", "Skill D"]}
   ],
-  "experience": [
-    {
-      "title": "Job Position Title",
-      "company": "Company Name",
-      "sub": "Department or Sub-Title",
-      "dates": "Dates (e.g. 2020 – Present)",
-      "location": "City, ST",
-      "bullets": [
-        "Tailored achievement bullet point 1...",
-        "Tailored achievement bullet point 2...",
-        "Tailored achievement bullet point 3...",
-        "Tailored achievement bullet point 4..."
-      ]
-    }
-  ],
-  "jobBullets": {
-${jobBulletsTemplate}
-  }
+  "experience": ${experienceTemplateArray}
 }`;
 
       // Step 3 — Call Gemini API
