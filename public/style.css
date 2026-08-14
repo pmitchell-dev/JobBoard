@@ -237,7 +237,8 @@ body {
   animation: slideUp 0.2s ease;
   max-height: 90vh; display: flex; flex-direction: column;
 }
-.modal-lg { max-width: 900px; }
+.modal-lg { max-width: 1000px; width: 92vw; }
+.edit-modal-container { height: 85vh; max-height: 900px; }
 @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
 .modal-header {
@@ -262,7 +263,7 @@ body {
 .footer-spacer { flex: 1; }
 
 /* edit modal specific */
-.edit-header { align-items: flex-start; padding: 16px 24px; }
+.edit-header { align-items: flex-start; padding: 16px 24px; border-bottom: 1px solid var(--border); }
 .edit-title-block { flex: 1; display: flex; flex-direction: column; gap: 6px; }
 .edit-title-input {
   font-family: var(--font); font-size: 1.2rem; font-weight: 700;
@@ -278,6 +279,44 @@ body {
   transition: border-color 0.2s;
 }
 .edit-company-input:focus { border-bottom-color: rgba(255,255,255,0.2); }
+
+/* Edit modal top navigation tab bar */
+.edit-modal-tabs {
+  display: flex; align-items: center; gap: 6px;
+  padding: 10px 24px; background: rgba(0,0,0,0.25);
+  border-bottom: 1px solid var(--border); flex-shrink: 0;
+  overflow-x: auto; scrollbar-width: none;
+}
+.edit-modal-tabs::-webkit-scrollbar { display: none; }
+
+.edit-tab-btn {
+  padding: 8px 16px; border-radius: 8px; border: 1px solid transparent;
+  background: transparent; color: var(--text-muted);
+  font-family: var(--font); font-size: 0.82rem; font-weight: 500;
+  cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
+  white-space: nowrap; transition: all 0.15s ease; user-select: none;
+}
+.edit-tab-btn:hover { background: var(--surface-hov); color: var(--text); }
+.edit-tab-btn.active {
+  background: rgba(99,102,241,0.18); color: #a5b4fc;
+  border-color: rgba(99,102,241,0.35); font-weight: 600;
+  box-shadow: 0 0 12px rgba(99,102,241,0.15);
+}
+
+.edit-modal-body {
+  padding: 24px; overflow-y: auto; flex: 1;
+  display: flex; flex-direction: column; min-height: 0;
+}
+.edit-tab-pane {
+  flex: 1; display: flex; flex-direction: column; gap: 16px; min-height: 0;
+}
+.edit-tab-pane.hidden { display: none !important; }
+
+.general-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 8px;
+}
+.full-width-field { grid-column: 1 / -1; }
+.screenshots-section { margin-top: 8px; }
 
 .modal-body-split {
   display: flex; gap: 0; padding: 0; overflow: hidden;
@@ -904,13 +943,13 @@ kbd {
 /* The contenteditable editor area */
 .rich-editor {
   flex: 1;
-  min-height: 260px;
-  padding: 14px 16px;
+  min-height: 380px;
+  padding: 20px 24px;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: rgba(255,255,255,0.025);
   color: var(--text);
-  font-family: var(--font); font-size: 0.85rem; line-height: 1.65;
+  font-family: var(--font); font-size: 0.9rem; line-height: 1.7;
   outline: none;
   overflow-y: auto;
   transition: border-color 0.2s, background 0.2s;
@@ -920,6 +959,7 @@ kbd {
 .rich-editor:focus {
   border-color: rgba(99,102,241,0.5);
   background: rgba(99,102,241,0.04);
+  box-shadow: inset 0 0 0 1px rgba(99,102,241,0.2);
 }
 /* Placeholder via CSS data attribute */
 .rich-editor:empty::before {

@@ -334,26 +334,24 @@ function openEditModal(jobId) {
   }
   renderScreenshots(job.screenshots);
 
-  // Reset to notes tab
-  switchRightTab('notes');
-
   // Load documents into editors
   const resumeEditor = document.getElementById('resumeEditor');
   const coverEditor  = document.getElementById('coverEditor');
-  resumeEditor.innerHTML = job.resume      || '';
-  coverEditor.innerHTML  = job.coverLetter || '';
-
-  // Reset to Resume sub-tab
-  switchDocSubTab('resume');
-
-  // Update docs badge
-  updateDocsBadge(job);
+  if (resumeEditor) resumeEditor.innerHTML = job.resume      || '';
+  if (coverEditor)  coverEditor.innerHTML  = job.coverLetter || '';
 
   renderNotes(job.notes || []);
   renderEmails(job.emails || []);
   renderAttachments(job.attachments || []);
+
+  // Update docs & tab badges
+  updateDocsBadge(job);
+
+  // Default to General Info tab
+  switchEditTab('general');
+
   show('editModal');
-  document.getElementById('screenshotZone').addEventListener('paste', onZonePaste);
+  document.getElementById('screenshotZone')?.addEventListener('paste', onZonePaste);
 }
 
 function closeEditModal() {
@@ -446,31 +444,54 @@ async function deleteNote(noteId) {
   } catch (err) { toast('Error: ' + err.message, 'error'); }
 }
 
-// ── Right-panel tab switching ───────────────────────────────────────────────
-function switchRightTab(tab) {
-  document.getElementById('tabBtnNotes').classList.toggle('active',  tab === 'notes');
-  document.getElementById('tabBtnEmails').classList.toggle('active', tab === 'emails');
-  document.getElementById('tabBtnDocs').classList.toggle('active',   tab === 'docs');
-  document.getElementById('paneNotes').classList.toggle('hidden',  tab !== 'notes');
-  document.getElementById('paneEmails').classList.toggle('hidden', tab !== 'emails');
-  document.getElementById('paneDocs').classList.toggle('hidden',   tab !== 'docs');
+// ── Full-width edit modal tab switching ──────────────────────────────────────
+function switchEditTab(tab) {
+  const tabs = ['general', 'notes', 'emails', 'resume', 'cover', 'attachments'];
+  const tabBtnMap = {
+    general:     'tabBtnGeneral',
+    notes:       'tabBtnNotes',
+    emails:      'tabBtnEmails',
+    resume:      'tabBtnResume',
+    cover:       'tabBtnCover',
+    attachments: 'tabBtnAttach'
+  };
+  const paneMap = {
+    general:     'paneGeneral',
+    notes:       'paneNotes',
+    emails:      'paneEmails',
+    resume:      'paneResume',
+    cover:       'paneCover',
+    attachments: 'paneAttachments'
+  };
+
+  tabs.forEach(t => {
+    const btn  = document.getElementById(tabBtnMap[t]);
+    const pane = document.getElementById(paneMap[t]);
+    if (btn)  btn.classList.toggle('active', t === tab);
+    if (pane) pane.classList.toggle('hidden', t !== tab);
+  });
 }
 
-// ── Documents sub-tab switching (Resume / Cover Letter / Other) ────────────────
+// Backward compatibility helpers
+function switchRightTab(tab) {
+  if (tab === 'notes')       switchEditTab('notes');
+  else if (tab === 'emails') switchEditTab('emails');
+  else if (tab === 'docs')   switchEditTab('resume');
+  else                       switchEditTab('general');
+}
+
 function switchDocSubTab(tab) {
-  document.getElementById('docSubResume').classList.toggle('active', tab === 'resume');
-  document.getElementById('docSubCover').classList.toggle('active',  tab === 'cover');
-  document.getElementById('docSubOther').classList.toggle('active',  tab === 'other');
-  document.getElementById('docPaneResume').classList.toggle('hidden', tab !== 'resume');
-  document.getElementById('docPaneCover').classList.toggle('hidden',  tab !== 'cover');
-  document.getElementById('docPaneOther').classList.toggle('hidden',  tab !== 'other');
+  if (tab === 'resume')      switchEditTab('resume');
+  else if (tab === 'cover')  switchEditTab('cover');
+  else if (tab === 'other')  switchEditTab('attachments');
 }
 
 // ── Rich-text toolbar command ─────────────────────────────────────────────────
 function execFmt(cmd, val) {
   document.execCommand(cmd, false, val || null);
   // Fire oninput on whichever editor is active so auto-save triggers
-  const active = document.getElementById('paneDocs').contains(document.activeElement)
+  const modal = document.getElementById('editModal');
+  const active = (modal && modal.contains(document.activeElement))
     ? document.activeElement.closest('.rich-editor')
     : null;
   if (active) active.dispatchEvent(new Event('input', { bubbles: true }));
@@ -618,16 +639,25 @@ async function uploadDocx(event) {
 
 // ── Docs badge helpers ────────────────────────────────────────────────────────
 function updateDocsBadge(job) {
-  const badge = document.getElementById('docsTabBadge');
-  if (!badge) return;
-  const attCount = job?.attachments?.length || 0;
-  const count = (job?.resume ? 1 : 0) + (job?.coverLetter ? 1 : 0) + attCount;
-  badge.textContent = count || '';
-  badge.classList.toggle('visible', count > 0);
+  const notesBadge  = document.getElementById('notesTabBadge');
+  const emailBadge  = document.getElementById('emailTabBadge');
+  const attachBadge = document.getElementById('attachTabBadge');
 
-  // Other-docs sub-tab badge
+  if (notesBadge)  notesBadge.textContent  = job?.notes?.length       || 0;
+  if (emailBadge)  emailBadge.textContent  = job?.emails?.length      || 0;
+  if (attachBadge) attachBadge.textContent = job?.attachments?.length || 0;
+
+  const badge = document.getElementById('docsTabBadge');
+  if (badge) {
+    const attCount = job?.attachments?.length || 0;
+    const count = (job?.resume ? 1 : 0) + (job?.coverLetter ? 1 : 0) + attCount;
+    badge.textContent = count || '';
+    badge.classList.toggle('visible', count > 0);
+  }
+
   const otherBadge = document.getElementById('docOtherBadge');
   if (otherBadge) {
+    const attCount = job?.attachments?.length || 0;
     otherBadge.textContent = attCount || '';
     otherBadge.classList.toggle('visible', attCount > 0);
   }

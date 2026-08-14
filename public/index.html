@@ -271,19 +271,8 @@
             <img id="addScreenshotPreview" class="screenshot-img hidden" src="" alt="Screenshot preview" />
             <button class="screenshot-remove hidden" id="addScreenshotRemoveBtn" onclick="clearAddScreenshot(event)" title="Remove">&#x2715;</button>
           </div>
-          <input type="file" id="addScreenshotFileInput" accept="image/*" class="hidden" onchange="onAddScreenshotFileChange(event)" />
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn-secondary" onclick="closeAddModal()">Cancel</button>
-        <button class="btn-primary" id="saveAddBtn" onclick="saveNewJob()">Save Job</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ── Edit / Detail Modal ───────────────────────────────────────────── -->
-  <div class="modal-overlay hidden" id="editModal" onclick="handleOverlayClick(event,'editModal')">
-    <div class="modal modal-lg" role="dialog" aria-modal="true" aria-labelledby="editModalTitle">
+          <input type="  <div class="modal-overlay hidden" id="editModal" onclick="handleOverlayClick(event,'editModal')">
+    <div class="modal modal-lg edit-modal-container" role="dialog" aria-modal="true" aria-labelledby="editModalTitle">
 
       <div class="modal-header edit-header">
         <div class="edit-title-block">
@@ -293,12 +282,21 @@
         <button class="modal-close-btn" onclick="closeEditModal()" aria-label="Close">&#x2715;</button>
       </div>
 
-      <div class="modal-body modal-body-split">
+      <!-- Main Navigation Tab Bar -->
+      <div class="edit-modal-tabs">
+        <button class="edit-tab-btn active" id="tabBtnGeneral" onclick="switchEditTab('general')">📋 General Info</button>
+        <button class="edit-tab-btn"        id="tabBtnNotes"   onclick="switchEditTab('notes')">📝 Notes <span class="tab-badge" id="notesTabBadge">0</span></button>
+        <button class="edit-tab-btn"        id="tabBtnEmails"  onclick="switchEditTab('emails')">📧 Emails <span class="tab-badge" id="emailTabBadge">0</span></button>
+        <button class="edit-tab-btn"        id="tabBtnResume"  onclick="switchEditTab('resume')">📄 Resume</button>
+        <button class="edit-tab-btn"        id="tabBtnCover"   onclick="switchEditTab('cover')">✉️ Cover Letter</button>
+        <button class="edit-tab-btn"        id="tabBtnAttach"  onclick="switchEditTab('attachments')">📁 Attachments <span class="tab-badge" id="attachTabBadge">0</span></button>
+      </div>
 
-        <!-- Left panel: job details + screenshot -->
-        <div class="edit-panel edit-panel-left">
+      <div class="modal-body edit-modal-body">
 
-          <div class="form-row">
+        <!-- ── General Info Tab ── -->
+        <div class="edit-tab-pane" id="paneGeneral">
+          <div class="general-grid">
             <div class="form-group">
               <label for="editStatus">Status</label>
               <select id="editStatus">
@@ -313,24 +311,23 @@
               <label for="editDate">Date Applied</label>
               <input type="date" id="editDate" />
             </div>
-          </div>
-
-          <div class="form-group">
-            <label for="editUrl">Job Listing URL</label>
-            <div class="url-row">
-              <input type="url" id="editUrl" placeholder="https://..." />
-              <button class="btn-icon-action" id="cachePageBtn" onclick="triggerCache()" title="Save page as PDF">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-              </button>
-              <a id="viewCacheLink" class="btn-icon-action" href="#" target="_blank" rel="noopener" title="Open saved PDF" style="display:none">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-              </a>
+            <div class="form-group full-width-field">
+              <label for="editUrl">Job Listing URL</label>
+              <div class="url-row">
+                <input type="url" id="editUrl" placeholder="https://..." />
+                <button class="btn-icon-action" id="cachePageBtn" onclick="triggerCache()" title="Save page as PDF">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                </button>
+                <a id="viewCacheLink" class="btn-icon-action" href="#" target="_blank" rel="noopener" title="Open saved PDF" style="display:none">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                </a>
+              </div>
+              <div class="cache-status-row" id="cacheStatusRow"></div>
             </div>
-            <div class="cache-status-row" id="cacheStatusRow"></div>
           </div>
 
           <!-- Screenshots (multi) -->
-          <div class="form-group">
+          <div class="form-group screenshots-section">
             <label>Screenshots <span class="screenshot-count-label" id="screenshotCountLabel"></span></label>
             <div class="screenshot-add-zone" id="screenshotZone"
                  ondragover="onScreenshotDragOver(event)"
@@ -343,183 +340,157 @@
             <div class="screenshot-gallery" id="screenshotGallery"></div>
             <input type="file" id="screenshotFileInput" accept="image/*" multiple class="hidden" onchange="onScreenshotFileChange(event)" />
           </div>
-
         </div>
 
-        <!-- Right panel: tabbed notes + emails -->
-        <div class="edit-panel edit-panel-right">
-
-          <!-- Tab bar -->
-          <div class="panel-tabs">
-            <button class="panel-tab active" id="tabBtnNotes"  onclick="switchRightTab('notes')">📝 Notes</button>
-            <button class="panel-tab"        id="tabBtnEmails" onclick="switchRightTab('emails')">📧 Emails <span class="tab-badge" id="emailTabBadge"></span></button>
-            <button class="panel-tab"        id="tabBtnDocs"   onclick="switchRightTab('docs')">📄 Documents <span class="tab-badge" id="docsTabBadge"></span></button>
+        <!-- ── Notes tab ── -->
+        <div class="edit-tab-pane hidden" id="paneNotes">
+          <div class="notes-input-block">
+            <label for="newNoteText">Add Note / Update</label>
+            <textarea id="newNoteText" placeholder="e.g. Submitted cover letter, got automated reply..." rows="3"></textarea>
+            <button class="btn-primary btn-sm" onclick="submitNote()">Add Note</button>
           </div>
-
-          <!-- ── Notes tab ── -->
-          <div class="tab-pane" id="paneNotes">
-            <div class="notes-input-block">
-              <label for="newNoteText">Add Note / Update</label>
-              <textarea id="newNoteText" placeholder="e.g. Submitted cover letter, got automated reply..." rows="4"></textarea>
-              <button class="btn-primary btn-sm" onclick="submitNote()">Add Note</button>
-            </div>
-            <div class="notes-log-header">
-              <span class="notes-log-title">Update Log</span>
-              <span class="notes-count" id="notesCount">0 entries</span>
-            </div>
-            <div class="notes-log" id="notesLog">
-              <div class="notes-empty">No notes yet. Add your first update above.</div>
-            </div>
+          <div class="notes-log-header">
+            <span class="notes-log-title">Update Log</span>
+            <span class="notes-count" id="notesCount">0 entries</span>
           </div>
-
-          <!-- ── Emails tab ── -->
-          <div class="tab-pane hidden" id="paneEmails">
-
-            <!-- Thunderbird drag zone -->
-            <div class="eml-drop-zone" id="emlDropZone"
-                 ondragover="onEmlDragOver(event)"
-                 ondragleave="onEmlDragLeave(event)"
-                 ondrop="onEmlDrop(event)">
-              <div class="eml-drop-icon">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-              </div>
-              <div class="eml-drop-text">
-                <strong>Drag email from Thunderbird</strong>
-                <span>Drop a message here to attach it automatically</span>
-              </div>
-            </div>
-
-            <div class="email-or-divider"><span>or enter manually</span></div>
-
-            <div class="email-add-block">
-              <label>Add Email</label>
-              <div class="form-row">
-                <div class="form-group" style="flex:2">
-                  <input type="text"  id="emailFrom"    placeholder="From (name or address)" />
-                </div>
-                <div class="form-group" style="flex:1">
-                  <input type="date"  id="emailDate" />
-                </div>
-              </div>
-              <div class="form-group">
-                <input type="text" id="emailSubject" placeholder="Subject" />
-              </div>
-              <div class="form-group">
-                <textarea id="emailBody" placeholder="Paste email body here..." rows="5"></textarea>
-              </div>
-              <button class="btn-primary btn-sm" onclick="submitEmail()">Attach Email</button>
-            </div>
-            <div class="emails-log-header">
-              <span class="notes-log-title">Attached Emails</span>
-              <span class="notes-count" id="emailsCount">0 emails</span>
-            </div>
-            <div class="emails-log" id="emailsLog">
-              <div class="notes-empty">No emails attached yet.</div>
-            </div>
+          <div class="notes-log" id="notesLog">
+            <div class="notes-empty">No notes yet. Add your first update above.</div>
           </div>
-
         </div>
 
-        <!-- ── Documents tab ── -->
-        <div class="tab-pane hidden" id="paneDocs">
-
-          <!-- Sub-tab bar: Resume / Cover Letter / Other -->
-          <div class="doc-subtab-bar">
-            <button class="doc-subtab active" id="docSubResume" onclick="switchDocSubTab('resume')">📋 Resume</button>
-            <button class="doc-subtab"        id="docSubCover"  onclick="switchDocSubTab('cover')">✉️ Cover Letter</button>
-            <button class="doc-subtab"        id="docSubOther"  onclick="switchDocSubTab('other')">📁 Other <span class="doc-other-badge" id="docOtherBadge"></span></button>
-          </div>
-
-          <!-- Resume pane -->
-          <div class="doc-editor-pane" id="docPaneResume">
-            <div class="rich-editor-toolbar" id="toolbarResume">
-              <button class="toolbar-btn" onclick="execFmt('bold')"         title="Bold (Ctrl+B)"><b>B</b></button>
-              <button class="toolbar-btn" onclick="execFmt('italic')"       title="Italic (Ctrl+I)"><i>I</i></button>
-              <button class="toolbar-btn" onclick="execFmt('underline')"    title="Underline (Ctrl+U)"><u>U</u></button>
-              <div class="toolbar-sep"></div>
-              <button class="toolbar-btn" onclick="execFmt('formatBlock','h1')"  title="Heading 1">H1</button>
-              <button class="toolbar-btn" onclick="execFmt('formatBlock','h2')"  title="Heading 2">H2</button>
-              <button class="toolbar-btn" onclick="execFmt('formatBlock','p')"   title="Paragraph">¶</button>
-              <div class="toolbar-sep"></div>
-              <button class="toolbar-btn" onclick="execFmt('insertUnorderedList')" title="Bullet list">&#8226;—</button>
-              <button class="toolbar-btn" onclick="execFmt('insertOrderedList')"   title="Numbered list">1.</button>
-              <div class="toolbar-sep"></div>
-              <button class="toolbar-btn" onclick="triggerDocxUpload('resume')" title="Upload .docx">📤 Upload .docx</button>
-              <button class="toolbar-btn toolbar-btn-clear" onclick="clearDocEditor('resume')" title="Clear content">✕ Clear</button>
+        <!-- ── Emails tab ── -->
+        <div class="edit-tab-pane hidden" id="paneEmails">
+          <!-- Thunderbird drag zone -->
+          <div class="eml-drop-zone" id="emlDropZone"
+               ondragover="onEmlDragOver(event)"
+               ondragleave="onEmlDragLeave(event)"
+               ondrop="onEmlDrop(event)">
+            <div class="eml-drop-icon">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
             </div>
-            <div class="rich-editor" id="resumeEditor"
-                 contenteditable="true"
-                 data-placeholder="Paste your resume here — formatting from Word is preserved..."
-                 oninput="onDocEditorInput('resume')"
-                 onpaste="onDocEditorPaste(event,'resume')"></div>
-            <div class="doc-actions">
-              <span class="doc-saved-hint" id="resumeSavedHint"></span>
-              <button class="btn-download-doc" onclick="downloadDoc('resume')">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                Download Resume .docx
-              </button>
+            <div class="eml-drop-text">
+              <strong>Drag email from Thunderbird</strong>
+              <span>Drop a message here to attach it automatically</span>
             </div>
           </div>
 
-          <!-- Cover Letter pane -->
-          <div class="doc-editor-pane hidden" id="docPaneCover">
-            <div class="rich-editor-toolbar" id="toolbarCover">
-              <button class="toolbar-btn" onclick="execFmt('bold')"         title="Bold (Ctrl+B)"><b>B</b></button>
-              <button class="toolbar-btn" onclick="execFmt('italic')"       title="Italic (Ctrl+I)"><i>I</i></button>
-              <button class="toolbar-btn" onclick="execFmt('underline')"    title="Underline (Ctrl+U)"><u>U</u></button>
-              <div class="toolbar-sep"></div>
-              <button class="toolbar-btn" onclick="execFmt('formatBlock','h1')"  title="Heading 1">H1</button>
-              <button class="toolbar-btn" onclick="execFmt('formatBlock','h2')"  title="Heading 2">H2</button>
-              <button class="toolbar-btn" onclick="execFmt('formatBlock','p')"   title="Paragraph">¶</button>
-              <div class="toolbar-sep"></div>
-              <button class="toolbar-btn" onclick="execFmt('insertUnorderedList')" title="Bullet list">&#8226;—</button>
-              <button class="toolbar-btn" onclick="execFmt('insertOrderedList')"   title="Numbered list">1.</button>
-              <div class="toolbar-sep"></div>
-              <button class="toolbar-btn" onclick="triggerDocxUpload('cover')" title="Upload .docx">📤 Upload .docx</button>
-              <button class="toolbar-btn toolbar-btn-clear" onclick="clearDocEditor('cover')" title="Clear content">✕ Clear</button>
-            </div>
-            <div class="rich-editor" id="coverEditor"
-                 contenteditable="true"
-                 data-placeholder="Paste your cover letter here — formatting from Word is preserved..."
-                 oninput="onDocEditorInput('cover')"
-                 onpaste="onDocEditorPaste(event,'cover')"></div>
-            <div class="doc-actions">
-              <span class="doc-saved-hint" id="coverSavedHint"></span>
-              <button class="btn-download-doc" onclick="downloadDoc('cover')">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                Download Cover Letter .docx
-              </button>
-            </div>
-          </div>
+          <div class="email-or-divider"><span>or enter manually</span></div>
 
-          <!-- Other Documents pane -->
-          <div class="doc-editor-pane hidden" id="docPaneOther">
-            <div class="attach-drop-zone" id="attachDropZone"
-                 ondragover="onAttachDragOver(event)"
-                 ondragleave="onAttachDragLeave(event)"
-                 ondrop="onAttachDrop(event)"
-                 onclick="document.getElementById('attachFileInput').click()">
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.55">
-                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
-              </svg>
-              <div class="attach-drop-text">
-                <strong>Drop files here</strong>
-                <span>or click to browse — any file type, up to 100 MB each</span>
+          <div class="email-add-block">
+            <label>Add Email</label>
+            <div class="form-row">
+              <div class="form-group" style="flex:2">
+                <input type="text"  id="emailFrom"    placeholder="From (name or address)" />
+              </div>
+              <div class="form-group" style="flex:1">
+                <input type="date"  id="emailDate" />
               </div>
             </div>
-            <input type="file" id="attachFileInput" multiple class="hidden" onchange="onAttachFileChange(event)" />
-            <div class="attach-log-header">
-              <span class="notes-log-title">Attached Files</span>
-              <span class="notes-count" id="attachCount">0 files</span>
+            <div class="form-group">
+              <input type="text" id="emailSubject" placeholder="Subject" />
             </div>
-            <div class="attach-list" id="attachList">
-              <div class="notes-empty">No files attached yet. Drop any file above to keep it with this job.</div>
+            <div class="form-group">
+              <textarea id="emailBody" placeholder="Paste email body here..." rows="4"></textarea>
+            </div>
+            <button class="btn-primary btn-sm" onclick="submitEmail()">Attach Email</button>
+          </div>
+          <div class="emails-log-header">
+            <span class="notes-log-title">Attached Emails</span>
+            <span class="notes-count" id="emailsCount">0 emails</span>
+          </div>
+          <div class="emails-log" id="emailsLog">
+            <div class="notes-empty">No emails attached yet.</div>
+          </div>
+        </div>
+
+        <!-- ── Resume Pane ── -->
+        <div class="edit-tab-pane doc-editor-pane hidden" id="paneResume">
+          <div class="rich-editor-toolbar" id="toolbarResume">
+            <button class="toolbar-btn" onclick="execFmt('bold')"         title="Bold (Ctrl+B)"><b>B</b></button>
+            <button class="toolbar-btn" onclick="execFmt('italic')"       title="Italic (Ctrl+I)"><i>I</i></button>
+            <button class="toolbar-btn" onclick="execFmt('underline')"    title="Underline (Ctrl+U)"><u>U</u></button>
+            <div class="toolbar-sep"></div>
+            <button class="toolbar-btn" onclick="execFmt('formatBlock','h1')"  title="Heading 1">H1</button>
+            <button class="toolbar-btn" onclick="execFmt('formatBlock','h2')"  title="Heading 2">H2</button>
+            <button class="toolbar-btn" onclick="execFmt('formatBlock','p')"   title="Paragraph">¶</button>
+            <div class="toolbar-sep"></div>
+            <button class="toolbar-btn" onclick="execFmt('insertUnorderedList')" title="Bullet list">&#8226;—</button>
+            <button class="toolbar-btn" onclick="execFmt('insertOrderedList')"   title="Numbered list">1.</button>
+            <div class="toolbar-sep"></div>
+            <button class="toolbar-btn" onclick="triggerDocxUpload('resume')" title="Upload .docx">📤 Upload .docx</button>
+            <button class="toolbar-btn toolbar-btn-clear" onclick="clearDocEditor('resume')" title="Clear content">✕ Clear</button>
+          </div>
+          <div class="rich-editor" id="resumeEditor"
+               contenteditable="true"
+               data-placeholder="Paste your resume here — formatting from Word is preserved..."
+               oninput="onDocEditorInput('resume')"
+               onpaste="onDocEditorPaste(event,'resume')"></div>
+          <div class="doc-actions">
+            <span class="doc-saved-hint" id="resumeSavedHint"></span>
+            <button class="btn-download-doc" onclick="downloadDoc('resume')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Download Resume .doc
+            </button>
+          </div>
+        </div>
+
+        <!-- ── Cover Letter Pane ── -->
+        <div class="edit-tab-pane doc-editor-pane hidden" id="paneCover">
+          <div class="rich-editor-toolbar" id="toolbarCover">
+            <button class="toolbar-btn" onclick="execFmt('bold')"         title="Bold (Ctrl+B)"><b>B</b></button>
+            <button class="toolbar-btn" onclick="execFmt('italic')"       title="Italic (Ctrl+I)"><i>I</i></button>
+            <button class="toolbar-btn" onclick="execFmt('underline')"    title="Underline (Ctrl+U)"><u>U</u></button>
+            <div class="toolbar-sep"></div>
+            <button class="toolbar-btn" onclick="execFmt('formatBlock','h1')"  title="Heading 1">H1</button>
+            <button class="toolbar-btn" onclick="execFmt('formatBlock','h2')"  title="Heading 2">H2</button>
+            <button class="toolbar-btn" onclick="execFmt('formatBlock','p')"   title="Paragraph">¶</button>
+            <div class="toolbar-sep"></div>
+            <button class="toolbar-btn" onclick="execFmt('insertUnorderedList')" title="Bullet list">&#8226;—</button>
+            <button class="toolbar-btn" onclick="execFmt('insertOrderedList')"   title="Numbered list">1.</button>
+            <div class="toolbar-sep"></div>
+            <button class="toolbar-btn" onclick="triggerDocxUpload('cover')" title="Upload .docx">📤 Upload .docx</button>
+            <button class="toolbar-btn toolbar-btn-clear" onclick="clearDocEditor('cover')" title="Clear content">✕ Clear</button>
+          </div>
+          <div class="rich-editor" id="coverEditor"
+               contenteditable="true"
+               data-placeholder="Paste your cover letter here — formatting from Word is preserved..."
+               oninput="onDocEditorInput('cover')"
+               onpaste="onDocEditorPaste(event,'cover')"></div>
+          <div class="doc-actions">
+            <span class="doc-saved-hint" id="coverSavedHint"></span>
+            <button class="btn-download-doc" onclick="downloadDoc('cover')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Download Cover Letter .doc
+            </button>
+          </div>
+        </div>
+
+        <!-- ── Attachments Pane ── -->
+        <div class="edit-tab-pane doc-editor-pane hidden" id="paneAttachments">
+          <div class="attach-drop-zone" id="attachDropZone"
+               ondragover="onAttachDragOver(event)"
+               ondragleave="onAttachDragLeave(event)"
+               ondrop="onAttachDrop(event)"
+               onclick="document.getElementById('attachFileInput').click()">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.55">
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+            </svg>
+            <div class="attach-drop-text">
+              <strong>Drop files here</strong>
+              <span>or click to browse — any file type, up to 100 MB each</span>
             </div>
           </div>
-
-          <input type="file" id="docxInput" accept=".docx" class="hidden" onchange="uploadDocx(event)" />
-
+          <input type="file" id="attachFileInput" multiple class="hidden" onchange="onAttachFileChange(event)" />
+          <div class="attach-log-header">
+            <span class="notes-log-title">Attached Files</span>
+            <span class="notes-count" id="attachCount">0 files</span>
+          </div>
+          <div class="attach-list" id="attachList">
+            <div class="notes-empty">No files attached yet. Drop any file above to keep it with this job.</div>
+          </div>
         </div>
+
+        <input type="file" id="docxInput" accept=".docx" class="hidden" onchange="uploadDocx(event)" />
 
       </div>
 
