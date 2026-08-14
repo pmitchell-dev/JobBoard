@@ -667,7 +667,8 @@ app.get('/api/master-docs/parse-sections/:type', async (req, res) => {
     const stripTags = (s) => (s || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 
     // Check if a string looks like an all-caps or title-case section header
-    const KNOWN_SECTIONS = ['SUMMARY', 'COMPETENCIES', 'SKILLS', 'EXPERIENCE', 'PROJECT', 'EDUCATION'];
+    // Check if a string looks like an all-caps or title-case section header
+    const KNOWN_SECTIONS = ['SUMMARY', 'COMPETENCIES', 'SKILLS', 'EXPERIENCE', 'WORK', 'EMPLOYMENT', 'CAREER', 'HISTORY', 'BACKGROUND', 'PROJECT', 'EDUCATION'];
     const isSectionHeader = (text) => {
       const upper = text.toUpperCase().trim();
       return KNOWN_SECTIONS.some(s => upper.includes(s));
@@ -739,7 +740,13 @@ app.get('/api/master-docs/parse-sections/:type', async (req, res) => {
       } else if (sectionTitle.includes('COMPETENCIES') || sectionTitle.includes('SKILLS')) {
         sections.competenciesHtml = sectionBody;
 
-      } else if (sectionTitle.includes('EXPERIENCE')) {
+      } else if (
+        sectionTitle.includes('EXPERIENCE') ||
+        sectionTitle.includes('WORK') ||
+        sectionTitle.includes('EMPLOYMENT') ||
+        sectionTitle.includes('CAREER') ||
+        sectionTitle.includes('HISTORY')
+      ) {
         parseExperienceSection(sectionBody, sections, stripTags);
 
       } else if (sectionTitle.includes('PROJECT')) {
@@ -781,7 +788,7 @@ app.get('/api/master-docs/parse-sections/:type', async (req, res) => {
 });
 
 function parseExperienceSection(html, sections, stripTags) {
-  const datePattern = /([A-Za-z]+\.?\s+\d{4}\s*[-–—]\s*(?:[A-Za-z]+\.?\s+\d{4}|Present|Current))/i;
+  const datePattern = /(?:(?:[A-Za-z]+\.?\s+)?\d{4}\s*[-–—to\s]+\s*(?:(?:[A-Za-z]+\.?\s+)?\d{4}|Present|Current|Now))/i;
 
   // Split into job blocks: each block starts with a line that contains a date range
   // OR a bold/strong header line

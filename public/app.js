@@ -3160,21 +3160,23 @@ async function generateAiDocument(docType) { // 'resume' | 'cover'
         `    "${j.key}": ["Bullet 1 with bold title: detail...", "Bullet 2...", "..."]`
       ).join(',\n');
 
-      const systemRolePrompt = 'You are a professional resume content writer. You return ONLY valid JSON with no markdown, no explanation, no code fences. Every value is a string or array of strings.';
+      const systemRolePrompt = 'You are a professional resume content writer. You return ONLY valid JSON with no markdown, no explanation, no code fences. Every value is a string or array of strings or array of objects.';
 
       const promptMessage =
-`Tailor the resume content for the position: "${title}" at "${company}".
+`Tailor the full resume content for the position: "${title}" at "${company}".
 
-CANDIDATE BACKGROUND — DO NOT CHANGE JOB TITLES OR INVENT EXPERIENCE:
-Name: ${skeleton.name}
+CRITICAL INSTRUCTION: You MUST include full detailed JOB EXPERIENCE (Work History) for every position. Do NOT omit past positions or employment history.
+
+CANDIDATE BACKGROUND:
+Name: ${skeleton.name || 'Candidate'}
 Past Roles:
-${roleList}
+${roleList || 'System Administrator / Software Developer / IT Specialist'}
 
 Master Professional Summary (tailor this for the target role):
-  ${skeleton.summary}
+  ${skeleton.summary || 'Experienced professional with background in IT, web applications, and system operations.'}
 
 Master Bullet Points per Role (tailor and prioritize; keep 4-6 per job):
-${bulletContext}
+${bulletContext || 'Key achievements, technical implementations, system management, team collaboration.'}
 
 ${jobContext}
 
@@ -3185,6 +3187,21 @@ Return ONLY this JSON object (no other text, no markdown fences):
     {"category": ${competencyCats.split(', ')[0] || '"Category 1"'}, "skills": ["Skill A", "Skill B", "Skill C", "Skill D"]},
     {"category": ${competencyCats.split(', ')[1] || '"Category 2"'}, "skills": ["Skill A", "Skill B", "Skill C", "Skill D"]},
     {"category": ${competencyCats.split(', ')[2] || '"Category 3"'}, "skills": ["Skill A", "Skill B", "Skill C", "Skill D"]}
+  ],
+  "experience": [
+    {
+      "title": "Job Position Title",
+      "company": "Company Name",
+      "sub": "Department or Sub-Title",
+      "dates": "Dates (e.g. 2020 – Present)",
+      "location": "City, ST",
+      "bullets": [
+        "Tailored achievement bullet point 1...",
+        "Tailored achievement bullet point 2...",
+        "Tailored achievement bullet point 3...",
+        "Tailored achievement bullet point 4..."
+      ]
+    }
   ],
   "jobBullets": {
 ${jobBulletsTemplate}
@@ -3236,31 +3253,46 @@ ${jobBulletsTemplate}
         compTable = `<table class="competencies-table"><thead><tr>${thCells}</tr></thead><tbody>${skillRows}</tbody></table>`;
       }
 
-      const aiBullets = aiData.jobBullets || {};
-      const expHtml = skeleton.experience.map(job => {
-        let bullets = aiBullets[job.key];
-        if (!bullets) {
-          const titleLower = (job.title || '').toLowerCase();
-          const fuzzyKey = Object.keys(aiBullets).find(k =>
-            k.toLowerCase().includes(titleLower) || titleLower.includes(k.toLowerCase().split('@')[0].trim())
-          );
-          bullets = fuzzyKey ? aiBullets[fuzzyKey] : null;
-        }
-        const bulletList = bullets || job.masterBullets || [];
-        const liItems = bulletList.map(b => `<li>${b}</li>`).join('');
-        const subLine = [job.sub, job.company].filter(Boolean).join(' – ');
-        const rightText = [job.location, job.dates].filter(Boolean).join('  ');
-        return `
-          <div class="job-header"><span>${job.title}</span><span>${rightText}</span></div>
-          ${subLine ? `<div class="job-sub"><em>${subLine}</em></div>` : ''}
-          <ul>${liItems}</ul>`;
-      }).join('\n');
+      // Assemble experience section: prefer aiData.experience array, or map over skeleton.experience
+      let expHtml = '';
+      if (Array.isArray(aiData.experience) && aiData.experience.length > 0) {
+        expHtml = aiData.experience.map(job => {
+          const bulletList = Array.isArray(job.bullets) ? job.bullets : (job.masterBullets || []);
+          const liItems = bulletList.map(b => `<li>${b}</li>`).join('');
+          const subLine = [job.sub, job.company].filter(Boolean).join(' – ');
+          const rightText = [job.location, job.dates].filter(Boolean).join('  ');
+          return `
+            <div class="job-header"><span>${job.title || 'Position'}</span><span>${rightText}</span></div>
+            ${subLine ? `<div class="job-sub"><em>${subLine}</em></div>` : ''}
+            <ul>${liItems}</ul>`;
+        }).join('\n');
+      } else if (Array.isArray(skeleton.experience) && skeleton.experience.length > 0) {
+        const aiBullets = aiData.jobBullets || {};
+        expHtml = skeleton.experience.map(job => {
+          let bullets = aiBullets[job.key];
+          if (!bullets) {
+            const titleLower = (job.title || '').toLowerCase();
+            const fuzzyKey = Object.keys(aiBullets).find(k =>
+              k.toLowerCase().includes(titleLower) || titleLower.includes(k.toLowerCase().split('@')[0].trim())
+            );
+            bullets = fuzzyKey ? aiBullets[fuzzyKey] : null;
+          }
+          const bulletList = bullets || job.masterBullets || [];
+          const liItems = bulletList.map(b => `<li>${b}</li>`).join('');
+          const subLine = [job.sub, job.company].filter(Boolean).join(' – ');
+          const rightText = [job.location, job.dates].filter(Boolean).join('  ');
+          return `
+            <div class="job-header"><span>${job.title}</span><span>${rightText}</span></div>
+            ${subLine ? `<div class="job-sub"><em>${subLine}</em></div>` : ''}
+            <ul>${liItems}</ul>`;
+        }).join('\n');
+      }
 
       const finalHtml = `
-<h1>${skeleton.name}</h1>
-<p class="contact">${skeleton.contact}</p>
+<h1>${skeleton.name || 'Candidate'}</h1>
+<p class="contact">${skeleton.contact || ''}</p>
 <h2>PROFESSIONAL SUMMARY</h2>
-<p>${aiData.summary || skeleton.summary}</p>
+<p>${aiData.summary || skeleton.summary || ''}</p>
 <h2>CORE COMPETENCIES</h2>
 ${compTable}
 <h2>PROFESSIONAL EXPERIENCE</h2>
