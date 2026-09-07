@@ -828,8 +828,9 @@ function parseExperienceSection(html, sections, stripTags) {
 
     if ((hasDate || hasBold) && text.length < 250 && !isBullet && !isSectionHeader && !isEducationOrName(text)) {
       const dateMatch = text.match(datePattern);
-      const dates = dateMatch ? dateMatch[1].trim() : '';
-      const beforeDate = dates ? text.substring(0, text.indexOf(dates)).trim() : text;
+      const dates = dateMatch ? dateMatch[0].trim() : '';
+      const matchIdx = dateMatch ? text.indexOf(dateMatch[0]) : -1;
+      const beforeDate = matchIdx !== -1 ? text.substring(0, matchIdx).trim() : text;
 
       // Extract parts separated by tabs, multiple spaces, or vertical bars |
       const subParts = beforeDate.split(/\t|\s{2,}|\|/).map(s => s.trim()).filter(Boolean);
