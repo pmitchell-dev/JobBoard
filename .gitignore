@@ -9,6 +9,7 @@ data/notepad.backup.json
 data/settings.json
 data/master_docs/
 data/backups/
+*.docx
 
 # ── Cache artefacts (PDFs + screenshots — can be very large) ──────────────────
 cache/*

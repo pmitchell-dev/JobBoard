@@ -790,8 +790,78 @@ app.get('/api/master-docs/parse-sections/:type', async (req, res) => {
 function parseExperienceSection(html, sections, stripTags) {
   const datePattern = /(?:(?:[A-Za-z]+\.?\s+)?\d{4}\s*[-–—to\s]+\s*(?:(?:[A-Za-z]+\.?\s+)?\d{4}|Present|Current|Now))/i;
 
-  // Split into job blocks: each block starts with a line that contains a date range
-  // OR a bold/strong header line
+  // ── Strategy 1: Table-based experience sections (e.g. Word tables) ───────
+  const tableMatches = [...html.matchAll(/<table[^>]*>([\s\S]*?)<\/table>/gi)];
+
+  if (tableMatches.length > 0) {
+    const parts = html.split(/(?=<table[^>]*>)/gi).filter(Boolean);
+
+    parts.forEach(part => {
+      const tableMatch = part.match(/^<table[^>]*>([\s\S]*?)<\/table>/i);
+      if (!tableMatch) return;
+
+      const tableContent = tableMatch[1];
+      const rowMatches = [...tableContent.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)];
+
+      let compOrTitle1 = '', locOrDates1 = '';
+      let compOrTitle2 = '', locOrDates2 = '';
+
+      rowMatches.forEach((rMatch, rIdx) => {
+        const cellMatches = [...rMatch[1].matchAll(/<(?:th|td)[^>]*>([\s\S]*?)<\/(?:th|td)>/gi)];
+        const cellTexts = cellMatches.map(c => stripTags(c[1]));
+
+        if (rIdx === 0) {
+          compOrTitle1 = cellTexts[0] || '';
+          locOrDates1 = cellTexts[1] || '';
+        } else if (rIdx === 1) {
+          compOrTitle2 = cellTexts[0] || '';
+          locOrDates2 = cellTexts[1] || '';
+        }
+      });
+
+      let jobTitle = '', company = '', location = '', dates = '';
+
+      if (datePattern.test(locOrDates2)) {
+        dates = (locOrDates2.match(datePattern) || [])[0] || locOrDates2;
+        jobTitle = compOrTitle2 || compOrTitle1;
+        company = compOrTitle1 !== jobTitle ? compOrTitle1 : '';
+        location = locOrDates1;
+      } else if (datePattern.test(locOrDates1)) {
+        dates = (locOrDates1.match(datePattern) || [])[0] || locOrDates1;
+        jobTitle = compOrTitle1;
+        company = compOrTitle2;
+        location = locOrDates2;
+      } else {
+        jobTitle = compOrTitle1;
+        company = compOrTitle2;
+        location = locOrDates1;
+        dates = locOrDates2;
+      }
+
+      const bullets = [];
+      const liMatches = [...part.matchAll(/<li[^>]*>([\s\S]*?)<\/li>/gi)];
+      liMatches.forEach(lm => {
+        const bText = stripTags(lm[1]);
+        if (bText.length > 10) bullets.push(bText);
+      });
+
+      if (jobTitle || company) {
+        sections.experience.push({
+          key: `${jobTitle} @ ${company || 'Company'}`,
+          title: jobTitle,
+          company: company,
+          sub: '',
+          location: location,
+          dates: dates,
+          masterBullets: bullets
+        });
+      }
+    });
+
+    if (sections.experience.length > 0) return;
+  }
+
+  // ── Strategy 2: Paragraph-based experience sections ──────────────────────
   const paras = [...html.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/gi)];
 
   let currentJob = null;
@@ -886,7 +956,6 @@ function parseExperienceSection(html, sections, stripTags) {
   // Also grab bullets from <ul><li> patterns (some formats use lists)
   const liMatches = [...html.matchAll(/<li[^>]*>([\s\S]*?)<\/li>/gi)];
   if (liMatches.length > 0 && sections.experience.length > 0) {
-    // Distribute bullets: if they came after a job, assign to last job
     liMatches.forEach(lm => {
       const bulletText = stripTags(lm[1]).trim();
       if (bulletText.length > 10 && sections.experience.length > 0) {
