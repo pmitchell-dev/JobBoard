@@ -890,29 +890,45 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (generateResumeBtn) {
     generateResumeBtn.addEventListener('click', async () => {
       if (!activeJob) return;
-      resumeStatusMsg.textContent = '⚡ Generating tailored resume summary with AI...';
+      resumeStatusMsg.textContent = '⚡ Requesting JobBoard Server to generate tailored resume...';
       resumeStatusMsg.classList.remove('hidden');
       generateResumeBtn.disabled = true;
 
-      const settings = await getOpenWebUiSettings();
-      const masterResume = await fetchMasterDoc('resume');
-      
-      let masterContext = '';
-      if (masterResume) {
-        masterContext = `\n\n--- BASE MASTER RESUME ---\n${JSON.stringify(masterResume, null, 2)}\n---------------------------\n`;
-      }
+      try {
+        const res = await fetch(`${serverUrl}/api/jobs/${activeJob.id}/generate/resume`, { method: 'POST' });
+        const data = await res.json();
+        
+        if (!res.ok) throw new Error(data.error || 'Server error');
+        
+        // Convert the rich HTML to slightly readable plain text/markdown for the extension's simple textarea
+        let textResult = (data.resultHtml || '')
+          .replace(/<h1[^>]*>/gi, '
+# ')
+          .replace(/<h2[^>]*>/gi, '
+## ')
+          .replace(/<h[3-6][^>]*>/gi, '
+### ')
+          .replace(/<li[^>]*>/gi, '
+• ')
+          .replace(/<brs*/?>/gi, '
+')
+          .replace(/<[^>]+>/g, '')
+          .replace(/
+{3,}/g, '
 
-      const notesSummary = (activeJob.notes || []).map(n => n.text).join('; ');
-      let prompt = `Write a targeted resume profile summary and key experience bullet points tailored for the position of "${activeJob.title}" at "${activeJob.company}". Include key skills in systems administration, infrastructure engineering, software development, and automation. Job Listing URL: ${activeJob.url || 'N/A'}. Additional notes: ${notesSummary || 'None'}.`;
-      
-      if (masterContext) {
-        prompt += `\nPlease use the following master resume details as the foundational context to craft the tailored resume:\n${masterContext}`;
-      }
+')
+          .trim();
 
-      const messages = [];
-      if (settings.openWebUiSystemPrompt) {
-        messages.push({ role: 'system', content: settings.openWebUiSystemPrompt });
+        resumeTextarea.value = textResult || data.resultHtml;
+        activeJob.resumeText = data.resultHtml;
+        resumeStatusMsg.textContent = '✓ Resume generated successfully!';
+      } catch (err) {
+        resumeStatusMsg.textContent = `✗ Error: ${err.message}`;
+      } finally {
+        generateResumeBtn.disabled = false;
       }
+    });
+  }
       messages.push({ role: 'user', content: prompt });
 
       let resultText = await queryAiProxy(messages, settings.openWebUiModel, settings.openWebUiApiKey);
@@ -947,33 +963,30 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (generateCoverBtn) {
     generateCoverBtn.addEventListener('click', async () => {
       if (!activeJob) return;
-      coverStatusMsg.textContent = '⚡ Writing tailored cover letter with AI...';
+      coverStatusMsg.textContent = '⚡ Requesting JobBoard Server to generate tailored cover letter...';
       coverStatusMsg.classList.remove('hidden');
       generateCoverBtn.disabled = true;
 
-      const settings = await getOpenWebUiSettings();
-      const masterResume = await fetchMasterDoc('resume');
-      const masterCover = await fetchMasterDoc('cover');
-      
-      let masterContext = '';
-      if (masterResume) {
-        masterContext += `\n--- BASE MASTER RESUME ---\n${JSON.stringify(masterResume, null, 2)}\n`;
-      }
-      if (masterCover) {
-        masterContext += `\n--- BASE MASTER COVER LETTER ---\n${JSON.stringify(masterCover, null, 2)}\n`;
-      }
+      try {
+        const res = await fetch(`${serverUrl}/api/jobs/${activeJob.id}/generate/cover-letter`, { method: 'POST' });
+        const data = await res.json();
+        
+        if (!res.ok) throw new Error(data.error || 'Server error');
+        
+        const textResult = (data.resultHtml || '').replace(/<brs*/?>/gi, '
+').replace(/<p>/gi, '
 
-      const notesSummary = (activeJob.notes || []).map(n => n.text).join('; ');
-      let prompt = `Write a formal, compelling, and professional cover letter applying to "${activeJob.title}" at "${activeJob.company}". Express enthusiastic interest, highlight technical skills in systems administration and software automation, and reference key details. Notes: ${notesSummary || 'None'}.`;
-      
-      if (masterContext) {
-        prompt += `\nPlease use the following master document details as the foundational context to craft the tailored cover letter:\n${masterContext}`;
+').replace(/<[^>]+>/g, '').trim();
+        coverTextarea.value = textResult || data.resultHtml;
+        activeJob.coverLetterText = data.resultHtml;
+        coverStatusMsg.textContent = '✓ Cover Letter generated successfully!';
+      } catch (err) {
+        coverStatusMsg.textContent = `✗ Error: ${err.message}`;
+      } finally {
+        generateCoverBtn.disabled = false;
       }
-
-      const messages = [];
-      if (settings.openWebUiSystemPrompt) {
-        messages.push({ role: 'system', content: settings.openWebUiSystemPrompt });
-      }
+    });
+  }
       messages.push({ role: 'user', content: prompt });
 
       let resultText = await queryAiProxy(messages, settings.openWebUiModel, settings.openWebUiApiKey);

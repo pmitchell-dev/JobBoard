@@ -3062,14 +3062,9 @@ async function generateAiDocument(docType) { // 'resume' | 'cover'
     toast('No active job task selected.', 'error');
     return;
   }
-
   const job = jobs.find(j => j.id === activeJobId);
-  if (!job) {
-    toast('Job task not found.', 'error');
-    return;
-  }
+  if (!job) return;
 
-  // Check if content already exists in the related documents tab
   const targetEditorId = docType === 'resume' ? 'resumeEditor' : 'coverEditor';
   const targetEditorEl = document.getElementById(targetEditorId);
   const existingHtml = (docType === 'resume' ? job.resume : job.coverLetter) || (targetEditorEl ? targetEditorEl.innerHTML : '');
@@ -3094,289 +3089,30 @@ async function generateAiDocument(docType) { // 'resume' | 'cover'
   }
 
   try {
-    toast(`Compiling context and generating customized ${label}...`, 'info');
-
-    // ── Gather Job context ──────────────────────────────────────────────────
-    const title       = (document.getElementById('editTitle')?.value || job.title || '').trim();
-    const company     = (document.getElementById('editCompany')?.value || job.company || '').trim();
-    const status      = (document.getElementById('editStatus')?.value || job.status || 'applied');
-    const dateApplied = (document.getElementById('editDate')?.value || job.dateApplied || '');
-    const url         = (document.getElementById('editUrl')?.value || job.url || '').trim();
-
-    let jobContext = `JOB DETAILS:\n`;
-    jobContext += `- Target Position: ${title}\n`;
-    jobContext += `- Company: ${company}\n`;
-    jobContext += `- Status: ${status}\n`;
-    if (dateApplied) jobContext += `- Date Applied: ${dateApplied}\n`;
-    if (url)         jobContext += `- Job Listing URL: ${url}\n`;
-    if (Array.isArray(job.notes) && job.notes.length > 0) {
-      jobContext += `\nNOTES:\n`;
-      job.notes.forEach((n, i) => { jobContext += `[${i+1}] ${n.text}\n`; });
-    }
-    if (Array.isArray(job.emails) && job.emails.length > 0) {
-      jobContext += `\nEMAILS:\n`;
-      job.emails.forEach((em, i) => {
-        const snippet = (em.body || '').substring(0, 400);
-        jobContext += `[${i+1}] From: ${em.from} | Subject: ${em.subject}\n  ${snippet}\n`;
-      });
-    }
-
-    // ══════════════════════════════════════════════════════════════════════
-    //  RESUME — Template Injection Pipeline
-    // ══════════════════════════════════════════════════════════════════════
+    toast(`Requesting server to generate customized ${label}...`, 'info');
+    const endpoint = docType === 'resume' ? 'resume' : 'cover-letter';
+    const res = await fetch(`/api/jobs/${activeJobId}/generate/${endpoint}`, { method: 'POST' });
+    const data = await res.json();
+    
+    if (!res.ok) throw new Error(data.error || 'Server error');
+    
     if (docType === 'resume') {
-
-      // Step 1 — Fetch parsed skeleton from master resume
-      toast('Parsing master resume structure...', 'info');
-      const skelRes = await fetch('/api/master-docs/parse-sections/resume');
-      if (!skelRes.ok) {
-        const skelErr = await skelRes.json().catch(() => ({}));
-        throw new Error(skelErr.error || 'No master resume uploaded. Please upload your master resume in Settings → Documents first.');
-      }
-      const skeleton = await skelRes.json();
-
-      if (!skeleton.name && skeleton.experience.length === 0) {
-        throw new Error('Could not read the master resume structure. Please try re-uploading your master resume.');
-      }
-
-      // Step 2 — Build candidate real work history objects & defaults
-      const defaultCandidateJobs = [
-        {
-          key: "System Engineer II /Data Analyst (Infrastructure & Backend Ops) @ Cerner / Oracle Health",
-          title: "System Engineer II /Data Analyst (Infrastructure & Backend Ops)",
-          company: "Cerner / Oracle Health",
-          sub: "",
-          location: "Kansas City, MO",
-          dates: "April 2017 – June 2026",
-          masterBullets: [
-            "Deliver advanced tier-3 technical support across 10+ complex client environments, managing non-clinical backend infrastructure encompassing virtual Windows and Linux platforms.",
-            "Execute administrative operations within virtualized server topologies (VMware), creating/modifying VMs, executing snapshots/cloning, and managing shared storage (RAID, volume expansion, LUN provisioning).",
-            "Design and sustain complex TCP/IP networks, diagnosing deep routing problems, establishing static routes, creating vLANs, and enforcing security access controls.",
-            "Develop Python and PowerShell scripting architectures for efficient Windows automation while ensuring change control processes.",
-            "Perform complex infrastructure project assessments and estimations for large-scale data migrations; manage vendor escalations directly."
-          ]
-        },
-        {
-          key: "Network Administrator / IT Administrator @ Miller Eye Center",
-          title: "Network Administrator / IT Administrator",
-          company: "Miller Eye Center",
-          sub: "",
-          location: "Rockford, IL",
-          dates: "April 2014 – 2017",
-          masterBullets: [
-            "Supported a highly available local data network for 45+ endpoints and led hardware inventory mapping/scoping.",
-            "Directed the installation and ongoing performance management of collaborative communication systems (Avaya PBX, Microsoft Exchange).",
-            "Constructed and sustained a stable, virtualized server environment utilizing VMware to host critical Windows Server applications."
-          ]
-        }
-      ];
-
-      const realJobs = (Array.isArray(skeleton.experience) && skeleton.experience.length > 0)
-        ? skeleton.experience
-        : defaultCandidateJobs;
-
-      const roleList = realJobs.map(j =>
-        `  - "${j.title}" at "${j.company}" (${j.dates} | ${j.location})`
-      ).join('\n');
-
-      const bulletContext = realJobs.map(j => {
-        const bullets = (j.masterBullets || []).slice(0, 5).map(b => `    • ${b}`).join('\n');
-        return `  KEY "${j.key}":\n${bullets}`;
-      }).join('\n');
-
-      const competencyCats = (() => {
-        const catMatches = [...(skeleton.competenciesHtml || '').matchAll(/<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/gi)];
-        const cats = catMatches.map(m => m[1].replace(/<[^>]*>/g, '').trim()).filter(c => c && c.length > 2);
-        if (cats.length >= 3) return cats.slice(0, 3).map(c => `"${c}"`).join(', ');
-        return '"Systems & Automation", "Virtualization & Storage", "Networking & Administration"';
-      })();
-
-      const jobBulletsTemplate = realJobs.map(j =>
-        `    "${j.key}": [\n      "Tailored bullet point 1 with measurable outcome...",\n      "Tailored bullet point 2...",\n      "Tailored bullet point 3...",\n      "Tailored bullet point 4..."\n    ]`
-      ).join(',\n');
-
-      const systemRolePrompt = 'You are an expert career consultant and technical resume writer. You return ONLY valid JSON with no markdown, no explanation, no code fences. Every value is a string or array of strings or object.';
-
-      const promptMessage =
-`Tailor the resume bullet points and summary for the position: "${title}" at "${company}".
-
-CANDIDATE REAL WORK HISTORY:
-Name: ${skeleton.name || 'PATRICK MITCHELL'}
-Contact: ${skeleton.contact || 'Gladstone, MO | (515) 771-3320 | pmitchell.dev@gmail.com | GitHub: pmitchell-dev'}
-
-Positions to Tailor Bullets For:
-${roleList}
-
-Master Bullet Points:
-${bulletContext}
-
-${jobContext}
-
-Return ONLY this JSON object (no other text, no markdown fences):
-{
-  "summary": "3-5 sentence tailored professional summary paragraph.",
-  "competencies": [
-    {"category": ${competencyCats.split(', ')[0] || '"Systems & Automation"'}, "skills": ["Skill A", "Skill B", "Skill C", "Skill D"]},
-    {"category": ${competencyCats.split(', ')[1] || '"Virtualization & Storage"'}, "skills": ["Skill A", "Skill B", "Skill C", "Skill D"]},
-    {"category": ${competencyCats.split(', ')[2] || '"Networking & Administration"'}, "skills": ["Skill A", "Skill B", "Skill C", "Skill D"]}
-  ],
-  "jobBullets": {
-${jobBulletsTemplate}
-  }
-}`;
-
-      // Step 3 — Call Gemini API
-      toast('Sending to Gemini API for content tailoring...', 'info');
-      const modelName = localStorage.getItem('jobboard_chat_model') || 'gemini-flash-latest';
-      let rawAi = await askGemini(promptMessage, systemRolePrompt, modelName);
-
-      // Step 4 — Parse AI JSON with fallback for markdown fences
-      rawAi = rawAi
-        .replace(/^```json\s*/i, '')
-        .replace(/^```\s*/,      '')
-        .replace(/```\s*$/,      '')
-        .trim();
-
-      const jsonStart = rawAi.indexOf('{');
-      const jsonEnd   = rawAi.lastIndexOf('}');
-      if (jsonStart !== -1 && jsonEnd !== -1) {
-        rawAi = rawAi.substring(jsonStart, jsonEnd + 1);
-      }
-
-      let aiData;
-      try {
-        aiData = JSON.parse(rawAi);
-      } catch (parseErr) {
-        console.error('[AI JSON Parse Error]', parseErr, rawAi.substring(0, 300));
-        throw new Error('AI returned an invalid response. Please try generating again.');
-      }
-
-      // Step 5 — Assemble final HTML from locked real jobs + AI tailored content
-      toast('Assembling final resume...', 'info');
-
-      const comps = aiData.competencies || [];
-      let compTable = '';
-      if (comps.length > 0) {
-        const thCells = comps.map(cat => `<th>${cat.category || ''}</th>`).join('');
-        const maxSkills = Math.max(...comps.map(c => (c.skills || []).length));
-        let skillRows = '';
-        for (let i = 0; i < maxSkills; i++) {
-          const tdCells = comps.map(cat => {
-            const skill = (cat.skills || [])[i] || '';
-            return `<td>${skill ? `• ${skill}` : ''}</td>`;
-          }).join('');
-          skillRows += `<tr>${tdCells}</tr>`;
-        }
-        compTable = `<table class="competencies-table"><thead><tr>${thCells}</tr></thead><tbody>${skillRows}</tbody></table>`;
-      }
-
-      // Assemble experience section strictly locked to realJobs titles & headers
-      const aiBullets = aiData.jobBullets || {};
-      const expHtml = realJobs.map(job => {
-        let bullets = aiBullets[job.key] || aiBullets[job.title];
-        if (!bullets) {
-          const titleLower = (job.title || '').toLowerCase();
-          const fuzzyKey = Object.keys(aiBullets).find(k =>
-            k.toLowerCase().includes(titleLower) || titleLower.includes(k.toLowerCase().split('@')[0].trim())
-          );
-          bullets = fuzzyKey ? aiBullets[fuzzyKey] : null;
-        }
-        const bulletList = (bullets && Array.isArray(bullets) && bullets.length > 0) ? bullets : job.masterBullets;
-        const liItems = bulletList.map(b => `<li>${b}</li>`).join('');
-        const subLine = [job.sub, job.company].filter(Boolean).join(' – ');
-        const rightText = [job.location, job.dates].filter(Boolean).join('  ');
-        return `
-          <div class="job-header"><span>${job.title}</span><span>${rightText}</span></div>
-          ${subLine ? `<div class="job-sub"><em>${subLine}</em></div>` : ''}
-          <ul>${liItems}</ul>`;
-      }).join('\n');
-
-      const finalHtml = `
-<h1>${skeleton.name || 'PATRICK MITCHELL'}</h1>
-<p class="contact">${skeleton.contact || 'Gladstone, MO | (515) 771-3320 | pmitchell.dev@gmail.com | GitHub: pmitchell-dev'}</p>
-<h2>PROFESSIONAL SUMMARY</h2>
-<p>${aiData.summary || skeleton.summary || ''}</p>
-<h2>CORE COMPETENCIES</h2>
-${compTable}
-<h2>PROFESSIONAL EXPERIENCE</h2>
-${expHtml}
-${skeleton.projectsHtml ? `<h2>TECHNICAL PROJECTS</h2>\n${skeleton.projectsHtml}` : ''}
-${skeleton.educationHtml ? `<h2>EDUCATION</h2>\n${skeleton.educationHtml}` : ''}`.trim();
-
-      job.resume = finalHtml;
-      const editor = document.getElementById('resumeEditor');
-      if (editor) editor.innerHTML = finalHtml;
-      const hint = document.getElementById('resumeSavedHint');
-      if (hint) hint.textContent = 'AI Generated & Saved';
-
-      switchRightTab('docs');
-      switchDocSubTab('resume');
-      saveEditJob();
-      toast(`✨ Customized Resume generated and saved to Documents tab!`, 'success');
-
-    // ══════════════════════════════════════════════════════════════════════
-    //  COVER LETTER — Full Generation
-    // ══════════════════════════════════════════════════════════════════════
+      job.resume = data.resultHtml;
     } else {
-
-      let masterDocText = '';
-      try {
-        const res = await fetch('/api/master-docs/download/coverLetter');
-        if (res.ok) {
-          const arrayBuffer = await res.arrayBuffer();
-          if (typeof mammoth !== 'undefined') {
-            const result = await mammoth.convertToHtml({ arrayBuffer: arrayBuffer });
-            masterDocText = (result.value || '').trim();
-          }
-        }
-      } catch (e) {
-        console.warn('[AI Gen] Could not load master cover letter:', e.message);
-      }
-
-      const systemRolePrompt = 'You are an AI cover letter generator. You generate ONLY a clean HTML Cover Letter. You NEVER include a resume or work history bullet points. You NEVER change job titles or fabricate unmentioned experience.';
-      let promptMessage = `You are an expert career consultant. Write a compelling, tailored COVER LETTER for the position of "${title}" at "${company}".\n\n`;
-      if (masterDocText) {
-        promptMessage += `MASTER COVER LETTER TEMPLATE (style/tone guide):\n"""\n${masterDocText}\n"""\n\n`;
-      }
-      promptMessage += `${jobContext}\n\n`;
-      promptMessage += `STRICT OUTPUT REQUIREMENTS:\n`;
-      promptMessage += `1. Generate ONLY the Cover Letter. Do NOT include a resume or work history.\n`;
-      promptMessage += `2. DO NOT ALTER PREVIOUS JOB TITLES OR FABRICATE EXPERIENCE.\n`;
-      promptMessage += `3. Address the hiring team at ${company} regarding the ${title} role.\n`;
-      promptMessage += `4. Output clean semantic HTML (use <h1>, <h2>, <p>, <ul>, <li>, <strong>, <em>).\n`;
-      promptMessage += `5. Do NOT wrap in markdown fences. Return ONLY raw HTML body content.`;
-
-      toast('Sending to Gemini API for cover letter generation...', 'info');
-      const modelName = localStorage.getItem('jobboard_chat_model') || 'gemini-flash-latest';
-      let generatedContent = await askGemini(promptMessage, systemRolePrompt, modelName);
-
-      generatedContent = generatedContent
-        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-        .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, '')
-        .replace(/<!--[\s\S]*?-->/g, '')
-        .replace(/^```html\s*/i, '')
-        .replace(/^```\s*/, '')
-        .replace(/```\s*$/, '')
-        .trim();
-
-      if (!generatedContent) throw new Error('AI returned an empty document.');
-
-      job.coverLetter = generatedContent;
-      const editor = document.getElementById('coverEditor');
-      if (editor) editor.innerHTML = generatedContent;
-      const hint = document.getElementById('coverSavedHint');
-      if (hint) hint.textContent = 'AI Generated & Saved';
-
-      switchRightTab('docs');
-      switchDocSubTab('cover');
-      saveEditJob();
-      toast(`✨ Customized Cover Letter generated and saved to Documents tab!`, 'success');
+      job.coverLetter = data.resultHtml;
     }
+    
+    if (targetEditorEl) targetEditorEl.innerHTML = data.resultHtml;
+    const hint = document.getElementById(docType === 'resume' ? 'resumeSavedHint' : 'coverSavedHint');
+    if (hint) hint.textContent = 'AI Generated & Saved';
 
+    switchRightTab('docs');
+    switchDocSubTab(docType === 'resume' ? 'resume' : 'cover');
+    saveEditJob();
+    toast(`✨ Customized ${label} generated and saved!`, 'success');
   } catch (err) {
-    console.error(`[AI Gen Error] ${label}:`, err);
-    toast(err.message || `Failed to generate ${label}`, 'error');
+    console.error('[AI Gen]', err);
+    toast(`Error generating ${label}: ${err.message}`, 'error');
   } finally {
     if (btnEl) {
       btnEl.disabled = false;

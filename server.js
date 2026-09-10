@@ -502,7 +502,232 @@ app.post('/api/cache', async (req, res) => {
   }
 });
 
-// POST /api/screenshot/:id  — add a screenshot (supports multiple)
+
+// ── AI Document Generation Endpoints ──────────────────────────────────────────
+
+async function askGeminiInternal(promptText, systemInstruction, modelName) {
+  const GEMINI_API_ENDPOINT = 'http://192.168.50.217:5050/api/query';
+  const response = await fetch(GEMINI_API_ENDPOINT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      prompt: promptText.trim(),
+      model: modelName || 'gemini-flash-latest',
+      system_instruction: systemInstruction || ''
+    })
+  });
+  const data = await response.json();
+  if (response.ok && data.status === 'success') {
+    return data.result || '';
+  }
+  throw new Error(data.message || 'Error querying Gemini API Service');
+}
+
+app.post('/api/jobs/:id/generate/resume', async (req, res) => {
+  try {
+    const jobs = readJobs();
+    const idx = jobs.findIndex(j => j.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ error: 'Job not found' });
+    const job = jobs[idx];
+
+    const filePath = path.join(MASTER_DOCS_DIR, 'master_resume.docx');
+    if (!fs.existsSync(filePath)) {
+      return res.status(400).json({ error: 'No master document found. Please upload a master resume.' });
+    }
+    const docxBuffer = fs.readFileSync(filePath);
+    const { value: html } = await mammoth.convertToHtml({ buffer: docxBuffer });
+
+    const stripTags = (s) => (s || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    const KNOWN_SECTIONS = ['SUMMARY', 'COMPETENCIES', 'SKILLS', 'EXPERIENCE', 'WORK', 'EMPLOYMENT', 'CAREER', 'HISTORY', 'BACKGROUND', 'PROJECT', 'EDUCATION'];
+    const isSectionHeader = (text) => {
+      const upper = text.toUpperCase().trim();
+      if (KNOWN_SECTIONS.includes(upper)) return true;
+      if (KNOWN_SECTIONS.some(k => upper.startsWith(k + ' ') || upper.endsWith(' ' + k))) return true;
+      return false;
+    };
+    const parts = html.split(/(?=<p>|<h[1-6]>|<table>|<ul>|<ol>)/i);
+    let sections = [];
+    let currentSection = { title: 'HEADER', html: '' };
+    parts.forEach(p => {
+      const isHeading = /^<h[1-6]>/i.test(p);
+      const isBoldP = /^<p>(?:<strong>|<b>)([^<]+)(?:<\/strong>|<\/b>)<\/p>$/i.test(p);
+      if (isHeading || isBoldP) {
+        const text = stripTags(p);
+        if (text.length < 50 && isSectionHeader(text)) {
+          if (currentSection.html.trim()) sections.push(currentSection);
+          currentSection = { title: text.toUpperCase(), html: '' };
+          return;
+        }
+      }
+      currentSection.html += p + '\n';
+    });
+    if (currentSection.html.trim()) sections.push(currentSection);
+
+    const skeleton = {
+      name: '', contact: '', summary: '', competenciesHtml: '', experience: [], projectsHtml: '', educationHtml: ''
+    };
+
+    const headerSec = sections.find(s => s.title === 'HEADER');
+    if (headerSec) {
+      const ps = headerSec.html.split(/<\/p>/i).map(p => stripTags(p)).filter(Boolean);
+      if (ps.length > 0) skeleton.name = ps[0];
+      if (ps.length > 1) skeleton.contact = ps.slice(1).join(' | ');
+    }
+
+    const expSec = sections.find(s => ['EXPERIENCE', 'WORK', 'EMPLOYMENT', 'HISTORY'].some(k => s.title.includes(k)));
+    if (expSec) {
+      const tableMatches = [...expSec.html.matchAll(/<table[^>]*>([\s\S]*?)<\/table>/gi)];
+      if (tableMatches.length > 0) {
+        const tableParts = expSec.html.split(/(?=<table[^>]*>)/gi).filter(Boolean);
+        tableParts.forEach(part => {
+          const tableMatch = part.match(/^<table[^>]*>([\s\S]*?)<\/table>/i);
+          if (!tableMatch) return;
+          const rowMatches = [...tableMatch[1].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)];
+          if (rowMatches.length < 2) return;
+          const tr1Html = rowMatches[0][1];
+          const tr2Html = rowMatches[1][1];
+          const tr1Cells = [...tr1Html.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map(m => stripTags(m[1]));
+          const tr2Cells = [...tr2Html.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map(m => stripTags(m[1]));
+          const titleCompanyParts = (tr1Cells[0] || '').split(/\s*[-–|@]\s*/);
+          const jobTitle = titleCompanyParts[0] || '';
+          const company = titleCompanyParts.slice(1).join(' – ') || (tr2Cells[0] || '').split(/[-–|]/)[0] || '';
+          const location = (tr1Cells[1] || '').trim();
+          const dates = (tr2Cells[1] || '').trim();
+          let nextHtml = part.substring(tableMatch[0].length);
+          const ulMatch = nextHtml.match(/<ul[^>]*>([\s\S]*?)<\/ul>/i);
+          let bullets = [];
+          if (ulMatch) {
+            bullets = [...ulMatch[1].matchAll(/<li[^>]*>([\s\S]*?)<\/li>/gi)].map(m => stripTags(m[1]));
+          }
+          if (jobTitle) skeleton.experience.push({ key: `${jobTitle} @ ${company}`, title: jobTitle, company, sub: '', location, dates, masterBullets: bullets });
+        });
+      } else {
+        const ps = expSec.html.split(/(?=<p>)/i).map(p => stripTags(p)).filter(Boolean);
+        let currJob = null;
+        const datePattern = /(?:(?:[A-Za-z]+\.?\s+)?\d{4}\s*[-–—to\s]+\s*(?:(?:[A-Za-z]+\.?\s+)?\d{4}|Present|Current|Now))/i;
+        ps.forEach(line => {
+          if (datePattern.test(line) && line.length < 150) {
+            if (currJob) skeleton.experience.push(currJob);
+            currJob = { key: line, title: line, company: '', sub: '', location: '', dates: line.match(datePattern)[0] || '', masterBullets: [] };
+          } else if (currJob && line.length > 20) {
+            currJob.masterBullets.push(line);
+          }
+        });
+        if (currJob) skeleton.experience.push(currJob);
+      }
+    }
+
+    const defaultCandidateJobs = [
+      { key: "System Engineer II /Data Analyst (Infrastructure & Backend Ops) @ Cerner / Oracle Health", title: "System Engineer II /Data Analyst (Infrastructure & Backend Ops)", company: "Cerner / Oracle Health", sub: "", location: "Kansas City, MO", dates: "April 2017 – June 2026", masterBullets: ["Deliver advanced tier-3 technical support...", "Execute administrative operations...", "Design and sustain complex TCP/IP networks...", "Develop Python and PowerShell scripting architectures...", "Perform complex infrastructure project assessments..."] },
+      { key: "Network Administrator / IT Administrator @ Miller Eye Center", title: "Network Administrator / IT Administrator", company: "Miller Eye Center", sub: "", location: "Rockford, IL", dates: "April 2014 – 2017", masterBullets: ["Supported a highly available local data network...", "Directed the installation and ongoing performance management...", "Constructed and sustained a stable, virtualized server environment..."] }
+    ];
+    const realJobs = (skeleton.experience.length > 0) ? skeleton.experience : defaultCandidateJobs;
+
+    let jobContext = `JOB DETAILS:\n- Target Position: ${job.title || ''}\n- Company: ${job.company || ''}\n- Status: ${job.status || 'applied'}\n`;
+    if (job.dateApplied) jobContext += `- Date Applied: ${job.dateApplied}\n`;
+    if (job.url) jobContext += `- Job Listing URL: ${job.url}\n`;
+    if (job.notes && job.notes.length > 0) {
+      jobContext += `\nNOTES:\n`;
+      job.notes.forEach((n, i) => { jobContext += `[${i+1}] ${n.text}\n`; });
+    }
+
+    const roleList = realJobs.map(j => `  - "${j.title}" at "${j.company}" (${j.dates} | ${j.location})`).join('\n');
+    const bulletContext = realJobs.map(j => `  KEY "${j.key}":\n${(j.masterBullets || []).slice(0, 5).map(b => `    • ${b}`).join('\n')}`).join('\n');
+    const jobBulletsTemplate = realJobs.map(j => `    "${j.key}": [\n      "Tailored bullet point 1...",\n      "Tailored bullet point 2..."\n    ]`).join(',\n');
+
+    const systemRolePrompt = 'You are an expert career consultant and technical resume writer. You return ONLY valid JSON with no markdown, no explanation, no code fences.';
+    const promptMessage = `Tailor the resume bullet points and summary for the position: "${job.title || ''}" at "${job.company || ''}".\n\nCANDIDATE REAL WORK HISTORY:\nName: ${skeleton.name || 'PATRICK MITCHELL'}\nContact: ${skeleton.contact || ''}\n\nPositions to Tailor Bullets For:\n${roleList}\n\nMaster Bullet Points:\n${bulletContext}\n\n${jobContext}\n\nReturn ONLY this JSON object:\n{\n  "summary": "3-5 sentence tailored professional summary paragraph.",\n  "competencies": [\n    {"category": "Systems & Automation", "skills": ["Skill A", "Skill B"]},\n    {"category": "Virtualization & Storage", "skills": ["Skill A"]}\n  ],\n  "jobBullets": {\n${jobBulletsTemplate}\n  }\n}`;
+
+    const modelName = settings.openWebUiModel || 'gemini-flash-latest';
+    let rawAi = await askGeminiInternal(promptMessage, systemRolePrompt, modelName);
+    
+    rawAi = rawAi.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```\s*$/, '').trim();
+    const jsonStart = rawAi.indexOf('{');
+    const jsonEnd = rawAi.lastIndexOf('}');
+    if (jsonStart !== -1 && jsonEnd !== -1) rawAi = rawAi.substring(jsonStart, jsonEnd + 1);
+
+    const aiData = JSON.parse(rawAi);
+
+    let compTable = '';
+    if (aiData.competencies && aiData.competencies.length > 0) {
+      const thCells = aiData.competencies.map(c => `<th>${c.category}</th>`).join('');
+      const maxSkills = Math.max(...aiData.competencies.map(c => (c.skills || []).length));
+      let skillRows = '';
+      for (let i = 0; i < maxSkills; i++) {
+        const tdCells = aiData.competencies.map(c => {
+          const s = (c.skills && c.skills[i]) ? c.skills[i] : '';
+          return `<td>${s ? `• ${s}` : ''}</td>`;
+        }).join('');
+        skillRows += `<tr>${tdCells}</tr>\n`;
+      }
+      compTable = `<table class="competencies-table"><thead><tr>${thCells}</tr></thead><tbody>${skillRows}</tbody></table>`;
+    }
+
+    const aiBullets = aiData.jobBullets || {};
+    const expHtml = realJobs.map(j => {
+      let bullets = aiBullets[j.key] || aiBullets[j.title] || j.masterBullets;
+      const liItems = bullets.map(b => `<li>${b}</li>`).join('');
+      const subLine = [j.sub, j.company].filter(Boolean).join(' – ');
+      const rightText = [j.location, j.dates].filter(Boolean).join('  ');
+      return `<div class="job-header"><span>${j.title}</span><span>${rightText}</span></div>\n${subLine ? `<div class="job-sub"><em>${subLine}</em></div>\n` : ''}<ul>${liItems}</ul>`;
+    }).join('\n');
+
+    const finalHtml = `<h1>${skeleton.name || 'PATRICK MITCHELL'}</h1>\n<p class="contact">${skeleton.contact || 'Gladstone, MO | (515) 771-3320 | pmitchell.dev@gmail.com'}</p>\n<h2>PROFESSIONAL SUMMARY</h2>\n<p>${aiData.summary || ''}</p>\n<h2>CORE COMPETENCIES</h2>\n${compTable}\n<h2>PROFESSIONAL EXPERIENCE</h2>\n${expHtml}`.trim();
+
+    jobs[idx].resume = finalHtml;
+    jobs[idx].updatedAt = new Date().toISOString();
+    writeJobs(jobs);
+
+    res.json({ success: true, resultHtml: finalHtml });
+  } catch (err) {
+    console.error('[AI Resume Gen]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/jobs/:id/generate/cover-letter', async (req, res) => {
+  try {
+    const jobs = readJobs();
+    const idx = jobs.findIndex(j => j.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ error: 'Job not found' });
+    const job = jobs[idx];
+
+    let masterDocText = '';
+    const filePath = path.join(MASTER_DOCS_DIR, 'master_cover_letter.docx');
+    if (fs.existsSync(filePath)) {
+      const docxBuffer = fs.readFileSync(filePath);
+      const { value: html } = await mammoth.convertToHtml({ buffer: docxBuffer });
+      masterDocText = (html || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    }
+
+    let jobContext = `JOB DETAILS:\n- Target Position: ${job.title || ''}\n- Company: ${job.company || ''}\n`;
+    if (job.notes && job.notes.length > 0) {
+      jobContext += `\nNOTES:\n`;
+      job.notes.forEach((n, i) => { jobContext += `[${i+1}] ${n.text}\n`; });
+    }
+
+    const systemRolePrompt = 'You are an AI cover letter generator. You generate ONLY a clean HTML Cover Letter. You NEVER include a resume or work history bullet points. You NEVER change job titles or fabricate unmentioned experience.';
+    let promptMessage = `You are an expert career consultant. Write a compelling, tailored COVER LETTER for the position of "${job.title || ''}" at "${job.company || ''}".\n\n`;
+    if (masterDocText) promptMessage += `MASTER COVER LETTER TEMPLATE (style/tone guide):\n"""\n${masterDocText}\n"""\n\n`;
+    promptMessage += `${jobContext}\n\nSTRICT OUTPUT REQUIREMENTS:\n1. Generate ONLY the Cover Letter. Do NOT include a resume or work history.\n2. DO NOT ALTER PREVIOUS JOB TITLES OR FABRICATE EXPERIENCE.\n3. Address the hiring team at ${job.company || ''} regarding the ${job.title || ''} role.\n4. Output clean semantic HTML (use <h1>, <h2>, <p>, <ul>, <li>, <strong>, <em>).\n5. Do NOT wrap in markdown fences. Return ONLY raw HTML body content.`;
+
+    const modelName = settings.openWebUiModel || 'gemini-flash-latest';
+    let rawAi = await askGeminiInternal(promptMessage, systemRolePrompt, modelName);
+    
+    rawAi = rawAi.replace(/^```html\s*/i, '').replace(/^```\s*/, '').replace(/```\s*$/, '').trim();
+
+    jobs[idx].coverLetter = rawAi;
+    jobs[idx].updatedAt = new Date().toISOString();
+    writeJobs(jobs);
+
+    res.json({ success: true, resultHtml: rawAi });
+  } catch (err) {
+    console.error('[AI Cover Gen]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+// ─────────────────────────────────────────────────────────────────────────────
+\n// POST /api/screenshot/:id  — add a screenshot (supports multiple)
 app.post('/api/screenshot/:id', (req, res) => {
   const jobId = req.params.id;
   const { imageData } = req.body;
