@@ -1135,6 +1135,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   });
 
+  // Popout Feature
+  const popoutBtn = document.getElementById('popoutBtn');
+  if (popoutBtn) {
+    popoutBtn.addEventListener('click', () => {
+      chrome.windows.create({
+        url: 'popup.html',
+        type: 'popup',
+        width: 420,
+        height: 620
+      });
+      window.close();
+    });
+  }
+
   // Helper Utility
   function escapeHtml(str) {
     return String(str)
