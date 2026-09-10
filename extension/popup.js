@@ -902,21 +902,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         // Convert the rich HTML to slightly readable plain text/markdown for the extension's simple textarea
         let textResult = (data.resultHtml || '')
-          .replace(/<h1[^>]*>/gi, '
-# ')
-          .replace(/<h2[^>]*>/gi, '
-## ')
-          .replace(/<h[3-6][^>]*>/gi, '
-### ')
-          .replace(/<li[^>]*>/gi, '
-• ')
-          .replace(/<brs*/?>/gi, '
-')
+          .replace(/<h1[^>]*>/gi, '\n# ')
+          .replace(/<h2[^>]*>/gi, '\n## ')
+          .replace(/<h[3-6][^>]*>/gi, '\n### ')
+          .replace(/<li[^>]*>/gi, '\n• ')
+          .replace(/<br\s*\/?>/gi, '\n')
           .replace(/<[^>]+>/g, '')
-          .replace(/
-{3,}/g, '
-
-')
+          .replace(/\n{3,}/g, '\n\n')
           .trim();
 
         resumeTextarea.value = textResult || data.resultHtml;
