@@ -153,6 +153,8 @@ node test_api.js [port]
 JobBoard includes a powerful companion Chrome Extension that brings your kanban board directly into your browser popup. It interacts seamlessly with your local JobBoard server.
 
 ### Extension Gallery
+<details>
+<summary><b>Click to view extension screenshots</b></summary>
 <p align="center">
   <img src="assets/screenshot-1.png" width="45%" />
   <img src="assets/screenshot-2.png" width="45%" />
@@ -168,6 +170,7 @@ JobBoard includes a powerful companion Chrome Extension that brings your kanban 
   <br />
   <img src="assets/screenshot-11.png" width="45%" />
 </p>
+</details>
 
 ### Features
 - **Quick Add**: Automatically detect the company, job title, and URL of the active tab to instantly add a job entry.
