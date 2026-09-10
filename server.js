@@ -1234,63 +1234,91 @@ app.post('/api/settings/verify', async (req, res) => {
 
 // ── Chat Proxy ───────────────────────────────────────────────────────────────
 
-// Proxy to local Open WebUI container
+// Proxy to Webhost Gemini API Service (translating from OpenAI format)
 app.all('/api/chat-proxy/*', async (req, res) => {
   const targetPath = req.url.replace('/api/chat-proxy', '');
-  let host = settings.openWebUiHost;
-  if (host === 'localhost' || host === '127.0.0.1') {
-    const clientIp = getClientIp(req);
-    if (clientIp && clientIp !== '127.0.0.1' && clientIp !== '::1' && clientIp !== 'localhost') {
-      host = clientIp;
-    } else if (fs.existsSync('/.dockerenv')) {
-      host = 'host.docker.internal';
-    }
+
+  // 1. Mock the models endpoint so the frontend/extension doesn't break
+  if (targetPath === '/api/v1/models' || targetPath === '/api/models') {
+    return res.json({
+      object: "list",
+      data: [
+        { id: "gemini-flash-latest", object: "model", created: Date.now(), owned_by: "system" },
+        { id: "gemini-1.5-pro", object: "model", created: Date.now(), owned_by: "system" }
+      ]
+    });
   }
-  const targetUrl = `http://${host}:${settings.openWebUiPort}${targetPath}`;
 
-  try {
-    const headers = {};
-    const allowedHeaders = ['authorization', 'content-type', 'accept'];
-    for (const h of allowedHeaders) {
-      if (req.headers[h]) {
-        headers[h] = req.headers[h];
+  // 2. Mock the prompts endpoint
+  if (targetPath.includes('/prompts')) {
+    return res.json([]);
+  }
+
+  // 3. Translate chat completions to Gemini /api/query
+  if (targetPath.includes('/chat/completions')) {
+    try {
+      const body = req.body;
+      const model = body.model || 'gemini-flash-latest';
+      let systemInstruction = '';
+      let promptText = '';
+
+      // Flatten OpenAI messages array into prompt and system_instruction
+      if (body.messages && Array.isArray(body.messages)) {
+        for (const msg of body.messages) {
+          if (msg.role === 'system') {
+            systemInstruction += msg.content + '\n';
+          } else if (msg.role === 'user') {
+            promptText += `User: ${msg.content}\n\n`;
+          } else if (msg.role === 'assistant') {
+            promptText += `Assistant: ${msg.content}\n\n`;
+          }
+        }
+      } else if (body.prompt) {
+        promptText = body.prompt;
       }
-    }
 
-    const fetchOpts = {
-      method: req.method,
-      headers: headers,
-    };
+      const geminiUrl = 'http://192.168.50.217:5050/api/query';
+      console.log(`[Chat Proxy] Translating request to Gemini API Service at ${geminiUrl}`);
 
-    if (['POST', 'PUT', 'PATCH'].includes(req.method)) {
-      fetchOpts.body = JSON.stringify(req.body);
-    }
+      const response = await fetch(geminiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: promptText.trim(),
+          model: model,
+          system_instruction: systemInstruction.trim()
+        })
+      });
 
-    console.log(`[Chat Proxy] Requesting: ${req.method} ${targetUrl} (Auth: ${headers['authorization'] ? 'Present' : 'None'})`);
-    const response = await fetch(targetUrl, fetchOpts);
-    console.log(`[Chat Proxy] Response status: ${response.status}`);
+      const data = await response.json();
 
-    res.status(response.status);
-    if (response.headers.get('content-type')) {
-      res.setHeader('content-type', response.headers.get('content-type'));
-    }
-
-    if (targetPath.includes('/chat/completions')) {
-      if (response.body && typeof response.body.pipe === 'function') {
-        response.body.pipe(res);
+      if (response.ok && data.status === 'success') {
+        // Translate Gemini response back to OpenAI format
+        return res.json({
+          id: "chatcmpl-" + Date.now(),
+          object: "chat.completion",
+          created: Math.floor(Date.now() / 1000),
+          model: data.model || model,
+          choices: [{
+            index: 0,
+            message: {
+              role: "assistant",
+              content: data.result || ''
+            },
+            finish_reason: "stop"
+          }]
+        });
       } else {
-        const buffer = await response.buffer();
-        res.send(buffer);
+        console.error('[Chat Proxy] Gemini Error:', data.message);
+        return res.status(500).json({ error: data.message || 'Error querying Webhost Gemini API Service' });
       }
-    } else {
-      const buffer = await response.buffer();
-      console.log(`[Chat Proxy] Response body (first 500 chars):`, buffer.toString('utf8').substring(0, 500));
-      res.send(buffer);
+    } catch (err) {
+      console.error('[Chat Proxy] Network Error:', err.message);
+      return res.status(500).json({ error: `Could not connect to Webhost Gemini API Service. Is it running at 192.168.50.217:5050?` });
     }
-  } catch (err) {
-    console.error('[Chat Proxy] Failed:', err.message);
-    res.status(500).json({ error: `Could not connect to Open WebUI container. Is it running at ${settings.openWebUiHost}:${settings.openWebUiPort}?` });
   }
+
+  return res.status(404).json({ error: `Path not mapped in Gemini adapter: ${targetPath}` });
 });
 
 // ── Attachments (Other Documents) ───────────────────────────────────────────
