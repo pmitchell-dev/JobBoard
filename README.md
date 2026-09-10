@@ -122,6 +122,49 @@ JobBoard features AI-powered document generation and an integrated AI Copilot po
 
 ---
 
+## 📡 Local REST API Integration
+
+JobBoard exposes a full REST API with CORS support (`Access-Control-Allow-Origin: *`) enabled for all local connections (`0.0.0.0:3000`). Local scripts, web apps, browser extensions, or CLI tools can query, create, search, and update job entries.
+
+For full endpoint specifications, request payloads, and code examples (JavaScript, Python, cURL), see [API_DOCUMENTATION.md](file:///c:/Users/pmitchell/.gemini/antigravity/scratch/JobBoard/API_DOCUMENTATION.md).
+
+### Quick Summary of API Endpoints
+
+- `GET /api/health` — API health status & job count metrics
+- `GET /api/jobs` — List all jobs (supports `?status=applied` filter)
+- `GET /api/jobs/search?q=keyword` — Search jobs across company, title, URL, and notes
+- `GET /api/jobs/:id` — Retrieve a single job entry by ID
+- `POST /api/jobs` — Add a new job application record
+- `PUT /api/jobs/:id` — Full update of job entry fields
+- `PATCH /api/jobs/:id` — Partial update (e.g. update status to `interview` or `offer`)
+- `DELETE /api/jobs/:id` — Delete job entry and clean up cached assets
+
+Test all API endpoints locally:
+```bash
+node test_api.js [port]
+```
+
+---
+
+## 🧩 Chrome Extension
+
+JobBoard includes a powerful companion Chrome Extension that brings your kanban board directly into your browser popup. It interacts seamlessly with your local JobBoard server.
+
+### Features
+- **Quick Add**: Automatically detect the company, job title, and URL of the active tab to instantly add a job entry.
+- **Double-Click to Edit**: Double-click any job card in the popup to open the detailed drawer.
+- **AI Document Generation**: Access the **✨ AI Documents** tab in the drawer to instantly generate customized Resumes and Cover Letters tailored to the job without opening the main dashboard.
+- **Dual Date Filtering**: Filter your jobs by "Date Applied" or "Date Created" with quick presets (Today, 7 days, 30 days).
+- **Server Sync**: Settings are saved locally, and all edits or status changes sync instantly with your main JobBoard server.
+
+### How to Install
+1. Open Chrome and navigate to `chrome://extensions/`.
+2. Enable **Developer mode** in the top right.
+3. Click **Load unpacked** and select the `extension` folder inside this repository (`JobBoard/extension`).
+4. Open the extension, click **⚙ Settings**, and enter your local JobBoard server address (e.g. `http://localhost:3000`).
+
+---
+
 ## Configuration
 
 | Environment Variable | Default | Description |

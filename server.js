@@ -12,7 +12,7 @@ const http = require('http');
 const https = require('https');
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 // ── Paths ────────────────────────────────────────────────────────────────────
 const DATA_DIR              = path.join(__dirname, 'data');
@@ -41,6 +41,7 @@ if (!fs.existsSync(MASTER_DOCS_META_FILE)) {
 }
 
 let settings = {
+  localAddress: 'http://localhost:3000',
   openWebUiHost: 'localhost',
   openWebUiPort: 3002,
   openWebUiApiKey: '',
@@ -63,6 +64,16 @@ if (fs.existsSync(SETTINGS_FILE)) {
 }
 
 // ── Middleware ───────────────────────────────────────────────────────────────
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
 app.use(express.json({ limit: '20mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/cache', express.static(CACHE_DIR));
@@ -226,12 +237,54 @@ function writeJobs(jobs) {
 
 // ── REST API ─────────────────────────────────────────────────────────────────
 
-// GET  /api/jobs
-app.get('/api/jobs', (req, res) => {
-  res.json(readJobs());
+// GET  /api/health — API health & status check
+app.get('/api/health', (req, res) => {
+  const jobs = readJobs();
+  res.json({
+    status: 'ok',
+    service: 'JobBoard API',
+    version: '1.1.6',
+    jobCount: jobs.length,
+    timestamp: new Date().toISOString(),
+    uptime: Math.floor(process.uptime())
+  });
 });
 
-// POST /api/jobs  — create
+// GET  /api/jobs — list all jobs (optional ?status=applied filtering)
+app.get('/api/jobs', (req, res) => {
+  let jobs = readJobs();
+  if (req.query.status) {
+    const statusFilter = req.query.status.toLowerCase().trim();
+    jobs = jobs.filter(j => (j.status || '').toLowerCase() === statusFilter);
+  }
+  res.json(jobs);
+});
+
+// GET  /api/jobs/search — search jobs by keyword (?q=term)
+app.get('/api/jobs/search', (req, res) => {
+  const q = (req.query.q || '').toLowerCase().trim();
+  const jobs = readJobs();
+  if (!q) return res.json(jobs);
+
+  const matched = jobs.filter(j => {
+    const company = (j.company || '').toLowerCase();
+    const title = (j.title || '').toLowerCase();
+    const url = (j.url || '').toLowerCase();
+    const notesText = (j.notes || []).map(n => n.text || '').join(' ').toLowerCase();
+    return company.includes(q) || title.includes(q) || url.includes(q) || notesText.includes(q);
+  });
+  res.json(matched);
+});
+
+// GET  /api/jobs/:id — get a single job by ID
+app.get('/api/jobs/:id', (req, res) => {
+  const jobs = readJobs();
+  const job = jobs.find(j => j.id === req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  res.json(job);
+});
+
+// POST /api/jobs — create a new job entry
 app.post('/api/jobs', (req, res) => {
   const jobs = readJobs();
   const job = {
@@ -241,20 +294,20 @@ app.post('/api/jobs', (req, res) => {
     url:         (req.body.url      || '').trim(),
     dateApplied: req.body.dateApplied || new Date().toISOString().split('T')[0],
     status:      req.body.status   || 'applied',
-    notes:       [],
-    emails:      [],
-    screenshots: [],
-    attachments: [],
+    notes:       Array.isArray(req.body.notes) ? req.body.notes : [],
+    emails:      Array.isArray(req.body.emails) ? req.body.emails : [],
+    screenshots: Array.isArray(req.body.screenshots) ? req.body.screenshots : [],
+    attachments: Array.isArray(req.body.attachments) ? req.body.attachments : [],
     cached:      false,
     createdAt:   new Date().toISOString(),
     updatedAt:   new Date().toISOString(),
   };
   jobs.push(job);
   writeJobs(jobs);
-  res.json(job);
+  res.status(201).json(job);
 });
 
-// PUT  /api/jobs/:id  — update fields (NOT notes — use /notes endpoint)
+// PUT  /api/jobs/:id — full update fields (NOT notes — use /notes endpoint)
 app.put('/api/jobs/:id', (req, res) => {
   const jobs = readJobs();
   const idx = jobs.findIndex(j => j.id === req.params.id);
@@ -263,6 +316,31 @@ app.put('/api/jobs/:id', (req, res) => {
   // Protect immutable fields
   const { id, createdAt, notes, ...rest } = req.body;
   jobs[idx] = { ...jobs[idx], ...rest, id: jobs[idx].id, createdAt: jobs[idx].createdAt, updatedAt: new Date().toISOString() };
+  writeJobs(jobs);
+  res.json(jobs[idx]);
+});
+
+// PATCH /api/jobs/:id — partial update of specific fields
+app.patch('/api/jobs/:id', (req, res) => {
+  const jobs = readJobs();
+  const idx = jobs.findIndex(j => j.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Job not found' });
+
+  const { id, createdAt, notes, emails, screenshots, attachments, ...updates } = req.body;
+
+  if (updates.company !== undefined) jobs[idx].company = String(updates.company).trim();
+  if (updates.title !== undefined) jobs[idx].title = String(updates.title).trim();
+  if (updates.url !== undefined) jobs[idx].url = String(updates.url).trim();
+  if (updates.status !== undefined) jobs[idx].status = String(updates.status).trim();
+  if (updates.dateApplied !== undefined) jobs[idx].dateApplied = String(updates.dateApplied).trim();
+
+  for (const key of Object.keys(updates)) {
+    if (!['company', 'title', 'url', 'status', 'dateApplied'].includes(key)) {
+      jobs[idx][key] = updates[key];
+    }
+  }
+
+  jobs[idx].updatedAt = new Date().toISOString();
   writeJobs(jobs);
   res.json(jobs[idx]);
 });
@@ -2432,10 +2510,11 @@ app.post('/api/restore', express.json(), async (req, res) => {
 });
 
 // ── Start ────────────────────────────────────────────────────────────────────
-app.listen(PORT, () => {
-  console.log(`\n🚀  JobBoard  →  http://localhost:${PORT}`);
-  console.log(`📁  Data      →  ${DATA_DIR}`);
-  console.log(`💾  Cache     →  ${CACHE_DIR}`);
-  console.log(`🔒  Backups   →  ${BACKUPS_DIR}\n`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`\n🚀  JobBoard API  →  http://localhost:${PORT}`);
+  console.log(`🌐  Local Network  →  http://0.0.0.0:${PORT}`);
+  console.log(`📁  Data           →  ${DATA_DIR}`);
+  console.log(`💾  Cache          →  ${CACHE_DIR}`);
+  console.log(`🔒  Backups        →  ${BACKUPS_DIR}\n`);
   createBackup(); // warm backup on start
 });

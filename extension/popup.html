@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JobBoard Tracker</title>
+  <link rel="stylesheet" href="popup.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <!-- App Header -->
+  <header class="app-header">
+    <div class="brand">
+      <img src="icons/icon48.png" alt="JobBoard Logo" class="brand-icon">
+      <span class="brand-title">JobBoard</span>
+      <span id="serverStatus" class="status-badge status-offline" title="Checking server connection...">● Offline</span>
+    </div>
+    <div class="header-actions">
+      <button id="addJobBtn" class="icon-btn" title="Add New Job">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+      </button>
+      <button id="settingsBtn" class="icon-btn" title="API Settings">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Quick Add Page Action Bar -->
+  <section class="quick-action-bar">
+    <button id="quickAddTabBtn" class="btn-quick-add">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg>
+      Add Current Tab as Job
+    </button>
+  </section>
+
+  <!-- Search & Filter Bar -->
+  <section class="controls-section">
+    <div class="search-box">
+      <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+      <input type="text" id="searchInput" placeholder="Search company, title, or notes..." autocomplete="off">
+    </div>
+    <!-- Status Navigation Pills -->
+    <nav class="status-pills">
+      <button class="pill active" data-status="all">All <span id="countAll" class="count-badge">0</span></button>
+      <button class="pill" data-status="applied">Applied <span id="countApplied" class="count-badge">0</span></button>
+      <button class="pill" data-status="screening">Screening <span id="countScreening" class="count-badge">0</span></button>
+      <button class="pill" data-status="interview">Interview <span id="countInterview" class="count-badge">0</span></button>
+      <button class="pill" data-status="offer">Offer <span id="countOffer" class="count-badge">0</span></button>
+      <button class="pill" data-status="rejected">Rejected <span id="countRejected" class="count-badge">0</span></button>
+    </nav>
+
+    <!-- Date Navigation Pills -->
+    <div style="display:flex; flex-direction:column; gap:6px; margin-top:2px;">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span style="font-size:10px; font-weight:600; color:var(--text-dim); text-transform:uppercase; width:52px;">Applied:</span>
+        <nav class="date-pills">
+          <button class="pill date-pill applied-pill active" data-date="all">All</button>
+          <button class="pill date-pill applied-pill" data-date="today">Today</button>
+          <button class="pill date-pill applied-pill" data-date="7days">Past 7</button>
+          <button class="pill date-pill applied-pill" data-date="30days">Past 30</button>
+          <button class="pill date-pill applied-pill" data-date="this-month">Month</button>
+        </nav>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span style="font-size:10px; font-weight:600; color:var(--text-dim); text-transform:uppercase; width:52px;">Created:</span>
+        <nav class="date-pills">
+          <button class="pill date-pill created-pill active" data-created-date="all">All</button>
+          <button class="pill date-pill created-pill" data-created-date="today">Today</button>
+          <button class="pill date-pill created-pill" data-created-date="7days">Past 7</button>
+          <button class="pill date-pill created-pill" data-created-date="30days">Past 30</button>
+          <button class="pill date-pill created-pill" data-created-date="this-month">Month</button>
+        </nav>
+      </div>
+    </div>
+  </section>
+
+  <!-- Main Content: Job List Container -->
+  <main class="main-content">
+    <!-- Setup Screen for First-Time Configuration -->
+    <div id="setupScreen" class="setup-screen hidden">
+      <div class="setup-card">
+        <div class="setup-header">
+          <img src="icons/icon48.png" alt="JobBoard Logo" class="setup-logo">
+          <h3>Welcome to JobBoard</h3>
+          <p>Configure your JobBoard local server address to begin tracking job applications.</p>
+        </div>
+        <div class="form-group" style="margin-top:14px;">
+          <label for="setupUrlInput">JobBoard Server Address</label>
+          <input type="text" id="setupUrlInput" placeholder="http://192.168.50.217:3001">
+          <div class="preset-chips" style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;">
+            <button type="button" class="preset-chip setup-chip" data-url="http://192.168.50.217:3001">192.168.50.217:3001</button>
+            <button type="button" class="preset-chip setup-chip" data-url="http://192.168.50.217:3000">192.168.50.217:3000</button>
+            <button type="button" class="preset-chip setup-chip" data-url="http://localhost:3001">localhost:3001</button>
+            <button type="button" class="preset-chip setup-chip" data-url="http://localhost:3000">localhost:3000</button>
+          </div>
+        </div>
+        <div id="setupAlert" class="alert hidden"></div>
+        <div class="modal-actions" style="margin-top:16px;">
+          <button type="button" id="testSetupConnBtn" class="btn btn-secondary">Test Connection</button>
+          <button type="button" id="saveSetupBtn" class="btn btn-primary">Save & Connect</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="loadingSpinner" class="spinner-container hidden">
+      <div class="spinner"></div>
+      <span>Connecting to JobBoard...</span>
+    </div>
+
+    <div id="emptyState" class="empty-state hidden">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+      <p id="emptyMessage">No job entries found.</p>
+    </div>
+
+    <div id="jobsList" class="jobs-list"></div>
+  </main>
+
+  <!-- Modal: Add / Edit Job -->
+  <div id="jobModal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="modalTitle">Add New Job</h3>
+        <button id="closeJobModal" class="close-btn">&times;</button>
+      </div>
+      <form id="jobForm">
+        <input type="hidden" id="jobId">
+        <div class="form-group">
+          <label for="formCompany">Company Name *</label>
+          <input type="text" id="formCompany" required placeholder="e.g. Acme Corp">
+        </div>
+        <div class="form-group">
+          <label for="formTitle">Job Title *</label>
+          <input type="text" id="formTitle" required placeholder="e.g. Senior Software Engineer">
+        </div>
+        <div class="form-group">
+          <label for="formUrl">Listing URL</label>
+          <input type="url" id="formUrl" placeholder="https://...">
+        </div>
+        <div class="form-row">
+          <div class="form-group col">
+            <label for="formStatus">Status</label>
+            <select id="formStatus">
+              <option value="applied">Applied</option>
+              <option value="screening">Screening</option>
+              <option value="interview">Interview</option>
+              <option value="offer">Offer</option>
+              <option value="rejected">Rejected</option>
+            </select>
+          </div>
+          <div class="form-group col">
+            <label for="formDate">Date Applied</label>
+            <input type="date" id="formDate">
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" id="cancelJobBtn" class="btn btn-secondary">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Job</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Drawer: View Details & Notes -->
+  <div id="detailDrawer" class="drawer-overlay hidden">
+    <div class="drawer-content">
+      <div class="drawer-header">
+        <div>
+          <h3 id="drawerCompany">Company</h3>
+          <p id="drawerTitle" class="drawer-subtitle">Title</p>
+        </div>
+        <button id="closeDrawer" class="close-btn">&times;</button>
+      </div>
+
+      <div class="drawer-tabs">
+        <button class="drawer-tab active" data-tab="info">General & Edits</button>
+        <button class="drawer-tab" data-tab="notes">Notes (<span id="drawerNotesCount">0</span>)</button>
+        <button class="drawer-tab" data-tab="docs">✨ AI Documents</button>
+      </div>
+
+      <div id="drawerTabInfo" class="drawer-body tab-content">
+        <div class="form-group" style="margin-bottom:8px;">
+          <label for="drawerEditCompany">Company Name</label>
+          <input type="text" id="drawerEditCompany" class="drawer-input">
+        </div>
+        <div class="form-group" style="margin-bottom:8px;">
+          <label for="drawerEditTitle">Job Title</label>
+          <input type="text" id="drawerEditTitle" class="drawer-input">
+        </div>
+        <div class="form-group" style="margin-bottom:8px;">
+          <label for="drawerEditUrl">Listing URL</label>
+          <input type="url" id="drawerEditUrl" class="drawer-input">
+        </div>
+        <div class="info-row" style="margin-top:8px;">
+          <span class="info-label">Status:</span>
+          <select id="drawerStatusSelect" class="status-select-inline">
+            <option value="applied">Applied</option>
+            <option value="screening">Screening</option>
+            <option value="interview">Interview</option>
+            <option value="offer">Offer</option>
+            <option value="rejected">Rejected</option>
+          </select>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Applied Date:</span>
+          <input type="date" id="drawerEditDate" class="drawer-input-date">
+        </div>
+        <div class="info-row">
+          <span class="info-label">Listing Link:</span>
+          <a id="drawerUrlLink" href="#" target="_blank" class="drawer-link">Open URL ↗</a>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Created:</span>
+          <span id="drawerCreated"></span>
+        </div>
+        <div style="margin-top:14px; text-align:right;">
+          <button id="saveDrawerEditsBtn" class="btn btn-primary btn-sm">Save Changes</button>
+        </div>
+      </div>
+
+      <div id="drawerTabNotes" class="drawer-body tab-content hidden">
+        <div class="add-note-box">
+          <textarea id="newNoteText" placeholder="Add a timestamped note..." rows="2"></textarea>
+          <button id="saveNoteBtn" class="btn btn-primary btn-sm">Add Note</button>
+        </div>
+        <div id="notesList" class="notes-list"></div>
+      </div>
+
+      <div id="drawerTabDocs" class="drawer-body tab-content hidden">
+        <div class="ai-doc-card">
+          <div class="ai-doc-header">
+            <h4>📄 Tailored Resume Summary</h4>
+            <button id="generateResumeBtn" class="btn btn-primary btn-xs">⚡ Generate Resume</button>
+          </div>
+          <div id="resumeStatusMsg" class="doc-status-msg hidden"></div>
+          <textarea id="resumeTextarea" class="doc-preview-textarea" placeholder="Click 'Generate Resume' to craft a tailored resume for this role..." rows="5"></textarea>
+          <div style="margin-top:6px; text-align:right;">
+            <button id="downloadResumeBtn" class="btn btn-secondary btn-xs">⬇ Download Resume (.txt)</button>
+          </div>
+        </div>
+
+        <div class="ai-doc-card" style="margin-top:14px;">
+          <div class="ai-doc-header">
+            <h4>✉ Tailored Cover Letter</h4>
+            <button id="generateCoverBtn" class="btn btn-primary btn-xs">⚡ Generate Cover Letter</button>
+          </div>
+          <div id="coverStatusMsg" class="doc-status-msg hidden"></div>
+          <textarea id="coverTextarea" class="doc-preview-textarea" placeholder="Click 'Generate Cover Letter' to write a customized cover letter for this role..." rows="5"></textarea>
+          <div style="margin-top:6px; text-align:right;">
+            <button id="downloadCoverBtn" class="btn btn-secondary btn-xs">⬇ Download Cover Letter (.txt)</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Settings -->
+  <div id="settingsModal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>JobBoard API Settings</h3>
+        <button id="closeSettingsModal" class="close-btn">&times;</button>
+      </div>
+      <div class="form-group">
+        <label for="serverUrlInput">JobBoard Local Server Address</label>
+        <input type="text" id="serverUrlInput" placeholder="http://localhost:3000">
+        <small class="form-hint">Enter your local JobBoard instance address (e.g. http://localhost:3000 or http://192.168.50.x:3000).</small>
+        <div class="preset-chips" style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;">
+          <button type="button" class="preset-chip" data-url="http://192.168.50.217:3001">192.168.50.217:3001</button>
+          <button type="button" class="preset-chip" data-url="http://192.168.50.217:3000">192.168.50.217:3000</button>
+          <button type="button" class="preset-chip" data-url="http://localhost:3001">localhost:3001</button>
+          <button type="button" class="preset-chip" data-url="http://localhost:3000">localhost:3000</button>
+        </div>
+      </div>
+      <div id="settingsAlert" class="alert hidden"></div>
+      <div class="modal-actions">
+        <button type="button" id="testConnBtn" class="btn btn-secondary">Test Connection</button>
+        <button type="button" id="saveSettingsBtn" class="btn btn-primary">Save Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
