@@ -921,27 +921,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     });
   }
-      messages.push({ role: 'user', content: prompt });
-
-      let resultText = await queryAiProxy(messages, settings.openWebUiModel, settings.openWebUiApiKey);
-      if (!resultText) {
-        resultText = `========================================================================\nTAILORED RESUME SUMMARY & HIGHLIGHTS\nPosition: ${activeJob.title}\nCompany: ${activeJob.company}\nDate Prepared: ${new Date().toLocaleDateString()}\nListing URL: ${activeJob.url || 'N/A'}\n========================================================================\n\nPROFESSIONAL SUMMARY\nHighly skilled technical professional applying for ${activeJob.title} at ${activeJob.company}. Proven expertise in system architecture, automated workflow development, infrastructure monitoring, and software engineering.\n\nCORE COMPETENCIES\n• Infrastructure & Server Management (Linux, Windows Server, Virtualization)\n• Software Engineering & REST API Development\n• Systems Reliability, Monitoring & Process Automation\n• Technical Problem Resolution & Continuous Integration\n\nTARGETED EXPERIENCE HIGHLIGHTS FOR ${activeJob.company.toUpperCase()}\n• Engineered high-availability server environment and streamlined deployment pipelines.\n• Automated routine technical workflows, significantly reducing operational downtime.\n• Collaborated cross-functionally to implement secure, reliable infrastructure solutions.\n`;
-      }
-
-      resumeTextarea.value = resultText;
-      activeJob.resumeText = resultText;
-      resumeStatusMsg.textContent = '✓ Resume generated!';
-      generateResumeBtn.disabled = false;
-
-      if (serverUrl && activeJob.id) {
-        fetch(`${serverUrl}/api/jobs/${activeJob.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ resumeText: resultText })
-        }).catch(err => console.error('Failed to save resumeText:', err));
-      }
-    });
-  }
 
   if (downloadResumeBtn) {
     downloadResumeBtn.addEventListener('click', () => {
@@ -965,10 +944,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         if (!res.ok) throw new Error(data.error || 'Server error');
         
-        const textResult = (data.resultHtml || '').replace(/<brs*/?>/gi, '
-').replace(/<p>/gi, '
-
-').replace(/<[^>]+>/g, '').trim();
+        const textResult = (data.resultHtml || '')
+          .replace(/<br\s*\/?>/gi, '\n')
+          .replace(/<p>/gi, '\n\n')
+          .replace(/<[^>]+>/g, '')
+          .trim();
         coverTextarea.value = textResult || data.resultHtml;
         activeJob.coverLetterText = data.resultHtml;
         coverStatusMsg.textContent = '✓ Cover Letter generated successfully!';
@@ -979,28 +959,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     });
   }
-      messages.push({ role: 'user', content: prompt });
 
-      let resultText = await queryAiProxy(messages, settings.openWebUiModel, settings.openWebUiApiKey);
-      if (!resultText) {
-        const todayDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-        resultText = `${todayDate}\n\nHiring Manager\n${activeJob.company}\n\nRE: Application for ${activeJob.title} position\n\nDear Hiring Manager at ${activeJob.company},\n\nI am writing to express my strong enthusiasm for the ${activeJob.title} role at ${activeJob.company}. With my background in systems administration, software automation, and infrastructure engineering, I am confident in my ability to deliver immediate value to your organization.\n\nMy technical experience encompasses designing robust server architectures, building automated integration tools, and optimizing system uptime. I am drawn to ${activeJob.company}'s mission and would be thrilled to bring my problem-solving drive and technical expertise to your team.\n\nThank you for considering my application. I look forward to the opportunity to discuss how my qualifications align with your requirements.\n\nSincerely,\n\nPatrick Mitchell\n`;
-      }
-
-      coverTextarea.value = resultText;
-      activeJob.coverLetterText = resultText;
-      coverStatusMsg.textContent = '✓ Cover letter generated!';
-      generateCoverBtn.disabled = false;
-
-      if (serverUrl && activeJob.id) {
-        fetch(`${serverUrl}/api/jobs/${activeJob.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ coverLetterText: resultText })
-        }).catch(err => console.error('Failed to save coverLetterText:', err));
-      }
-    });
-  }
 
   if (downloadCoverBtn) {
     downloadCoverBtn.addEventListener('click', () => {
