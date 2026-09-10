@@ -51,9 +51,8 @@ COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 # ── Run as non-root for security ──────────────────────────────────────────────
-# node:20-slim ships with a built-in 'node' user at UID/GID 1000 — use it directly.
+# Entrypoint runs as root to map volume permissions, then drops to node user.
 RUN chown -R node:node /app
-USER node
 
 EXPOSE 3000
 
