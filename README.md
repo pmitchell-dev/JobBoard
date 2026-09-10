@@ -8,24 +8,7 @@
 
 ---
 
-## Gallery
-<p align="center">
-  <img src="assets/screenshot-1.png" width="45%" />
-  <img src="assets/screenshot-2.png" width="45%" />
-  <br />
-  <img src="assets/screenshot-3.png" width="45%" />
-  <img src="assets/screenshot-5.png" width="45%" />
-  <br />
-  <img src="assets/screenshot-6.png" width="45%" />
-  <img src="assets/screenshot-8.png" width="45%" />
-  <br />
-  <img src="assets/screenshot-9.png" width="45%" />
-  <img src="assets/screenshot-10.png" width="45%" />
-  <br />
-  <img src="assets/screenshot-11.png" width="45%" />
-</p>
 
----
 
 ## Features
 
@@ -168,6 +151,23 @@ node test_api.js [port]
 ## 🧩 Chrome Extension
 
 JobBoard includes a powerful companion Chrome Extension that brings your kanban board directly into your browser popup. It interacts seamlessly with your local JobBoard server.
+
+### Extension Gallery
+<p align="center">
+  <img src="assets/screenshot-1.png" width="45%" />
+  <img src="assets/screenshot-2.png" width="45%" />
+  <br />
+  <img src="assets/screenshot-3.png" width="45%" />
+  <img src="assets/screenshot-5.png" width="45%" />
+  <br />
+  <img src="assets/screenshot-6.png" width="45%" />
+  <img src="assets/screenshot-8.png" width="45%" />
+  <br />
+  <img src="assets/screenshot-9.png" width="45%" />
+  <img src="assets/screenshot-10.png" width="45%" />
+  <br />
+  <img src="assets/screenshot-11.png" width="45%" />
+</p>
 
 ### Features
 - **Quick Add**: Automatically detect the company, job title, and URL of the active tab to instantly add a job entry.
