@@ -10,11 +10,19 @@
 
 ## Gallery
 <p align="center">
-  <img src="assets/screenshot-11.png" width="45%" />
-  <img src="assets/screenshot-10.png" width="45%" />
+  <img src="assets/screenshot-1.png" width="45%" />
+  <img src="assets/screenshot-2.png" width="45%" />
+  <br />
+  <img src="assets/screenshot-3.png" width="45%" />
+  <img src="assets/screenshot-5.png" width="45%" />
+  <br />
+  <img src="assets/screenshot-6.png" width="45%" />
+  <img src="assets/screenshot-8.png" width="45%" />
   <br />
   <img src="assets/screenshot-9.png" width="45%" />
-  <img src="assets/screenshot-8.png" width="45%" />
+  <img src="assets/screenshot-10.png" width="45%" />
+  <br />
+  <img src="assets/screenshot-11.png" width="45%" />
 </p>
 
 ---

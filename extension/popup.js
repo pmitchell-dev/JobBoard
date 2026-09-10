@@ -6,8 +6,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── State Variables ──────────────────────────────────────────────────────────
   let serverUrl = '';
   let allJobs = [];
-  let currentStatusFilter = 'all';
-  let currentDateFilter = 'all';
+  let activeStatuses = new Set(['all']);
+  let currentAppliedFilter = 'all';
+  let currentUpdatedFilter = 'all';
   let searchQuery = '';
   let activeJob = null; // Currently opened job in drawer
 
@@ -15,7 +16,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const serverStatusBadge = document.getElementById('serverStatus');
   const searchInput       = document.getElementById('searchInput');
   const statusPills       = document.querySelectorAll('.status-pills .pill');
-  const datePills         = document.querySelectorAll('.date-pills .date-pill');
+  const appliedPills      = document.querySelectorAll('.applied-pill');
+  const updatedPills      = document.querySelectorAll('.updated-pill');
   const jobsListEl        = document.getElementById('jobsList');
   const loadingSpinner    = document.getElementById('loadingSpinner');
   const emptyStateEl      = document.getElementById('emptyState');
@@ -333,6 +335,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
+  async function notifyDashboardOfUpdate() {
+    if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.query) {
+      if (!serverUrl) return;
+      try {
+        const tabs = await chrome.tabs.query({});
+        tabs.forEach(tab => {
+          if (tab.url && tab.url.startsWith(serverUrl)) {
+            chrome.tabs.reload(tab.id);
+          }
+        });
+      } catch (e) {
+        console.warn('Could not reload dashboard tabs', e);
+      }
+    }
+  }
+
   // ── 3. Counts & Filtering ──────────────────────────────────────────────────
   function updateCounts(jobs) {
     const counts = { all: jobs.length, applied: 0, screening: 0, interview: 0, offer: 0, rejected: 0 };
@@ -352,40 +370,49 @@ document.addEventListener('DOMContentLoaded', async () => {
   function getFilteredJobs() {
     return allJobs.filter(job => {
       // Status filter
-      if (currentStatusFilter !== 'all' && (job.status || '').toLowerCase() !== currentStatusFilter) {
+      const jobStatus = (job.status || '').toLowerCase();
+      if (!activeStatuses.has('all') && !activeStatuses.has(jobStatus)) {
         return false;
       }
 
       // Date filter
-      if (currentDateFilter !== 'all') {
+      const todayStr = new Date().toISOString().split('T')[0];
+      
+      if (currentAppliedFilter !== 'all') {
         const rawDate = job.dateApplied || job.createdAt;
         if (!rawDate) return false;
+        const jobDateStr = typeof rawDate === 'string' ? rawDate.split('T')[0] : new Date(rawDate).toISOString().split('T')[0];
 
-        let jobLocalDate;
-        if (typeof rawDate === 'string' && /^\d{4}-\d{2}-\d{2}/.test(rawDate)) {
-          const parts = rawDate.split('T')[0].split('-');
-          jobLocalDate = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
-        } else {
-          jobLocalDate = new Date(rawDate);
+        if (currentAppliedFilter === 'today') {
+          if (jobDateStr !== todayStr) return false;
+        } else if (currentAppliedFilter === '7days') {
+          const d7 = new Date(); d7.setDate(d7.getDate() - 7);
+          if (jobDateStr < d7.toISOString().split('T')[0] || jobDateStr > todayStr) return false;
+        } else if (currentAppliedFilter === '30days') {
+          const d30 = new Date(); d30.setDate(d30.getDate() - 30);
+          if (jobDateStr < d30.toISOString().split('T')[0] || jobDateStr > todayStr) return false;
+        } else if (currentAppliedFilter === 'this-month') {
+          const dMonth = new Date(); dMonth.setDate(1);
+          if (jobDateStr < dMonth.toISOString().split('T')[0] || jobDateStr > todayStr) return false;
         }
+      }
 
-        if (isNaN(jobLocalDate.getTime())) return false;
+      if (currentUpdatedFilter !== 'all') {
+        const rawUpdated = job.updatedAt || job.createdAt;
+        if (!rawUpdated) return false;
+        const jobUpdatedStr = typeof rawUpdated === 'string' ? rawUpdated.split('T')[0] : new Date(rawUpdated).toISOString().split('T')[0];
 
-        const now = new Date();
-        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const endOfToday   = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
-
-        if (currentDateFilter === 'today') {
-          if (jobLocalDate < startOfToday || jobLocalDate > endOfToday) return false;
-        } else if (currentDateFilter === '7days') {
-          const sevenDaysAgo = new Date(startOfToday.getTime() - 6 * 24 * 60 * 60 * 1000);
-          if (jobLocalDate < sevenDaysAgo) return false;
-        } else if (currentDateFilter === '30days') {
-          const thirtyDaysAgo = new Date(startOfToday.getTime() - 29 * 24 * 60 * 60 * 1000);
-          if (jobLocalDate < thirtyDaysAgo) return false;
-        } else if (currentDateFilter === 'this-month') {
-          const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-          if (jobLocalDate < startOfMonth) return false;
+        if (currentUpdatedFilter === 'today') {
+          if (jobUpdatedStr !== todayStr) return false;
+        } else if (currentUpdatedFilter === '7days') {
+          const d7 = new Date(); d7.setDate(d7.getDate() - 7);
+          if (jobUpdatedStr < d7.toISOString().split('T')[0] || jobUpdatedStr > todayStr) return false;
+        } else if (currentUpdatedFilter === '30days') {
+          const d30 = new Date(); d30.setDate(d30.getDate() - 30);
+          if (jobUpdatedStr < d30.toISOString().split('T')[0] || jobUpdatedStr > todayStr) return false;
+        } else if (currentUpdatedFilter === 'this-month') {
+          const dMonth = new Date(); dMonth.setDate(1);
+          if (jobUpdatedStr < dMonth.toISOString().split('T')[0] || jobUpdatedStr > todayStr) return false;
         }
       }
 
@@ -608,6 +635,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
       closeModal();
       await refreshData();
+      notifyDashboardOfUpdate();
     } catch (err) {
       alert('Error saving job: ' + err.message);
     }
@@ -625,6 +653,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const localJob = allJobs.find(j => j.id === id);
       if (localJob) localJob.status = newStatus;
       updateCounts(allJobs);
+      notifyDashboardOfUpdate();
     } catch (err) {
       console.error('Failed to update status:', err);
     }
@@ -636,6 +665,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
       await fetch(`${serverUrl}/api/jobs/${id}`, { method: 'DELETE' });
       await refreshData();
+      notifyDashboardOfUpdate();
     } catch (err) {
       alert('Failed to delete job: ' + err.message);
     }
@@ -703,6 +733,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         drawerCompany.textContent = activeJob.company;
         drawerTitle.textContent   = activeJob.title;
         await refreshData();
+        notifyDashboardOfUpdate();
         alert('Job entry details updated successfully!');
       } catch (err) {
         alert('Failed to save changes: ' + err.message);
@@ -777,7 +808,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       activeJob.notes.push(note);
       newNoteText.value = '';
       renderNotes(activeJob.notes);
-      refreshData();
+      await refreshData();
+      notifyDashboardOfUpdate();
     } catch (err) {
       alert('Failed to add note: ' + err.message);
     }
@@ -790,33 +822,51 @@ document.addEventListener('DOMContentLoaded', async () => {
       await fetch(`${serverUrl}/api/jobs/${activeJob.id}/notes/${noteId}`, { method: 'DELETE' });
       activeJob.notes = (activeJob.notes || []).filter(n => n.id !== noteId);
       renderNotes(activeJob.notes);
-      refreshData();
+      await refreshData();
+      notifyDashboardOfUpdate();
     } catch (err) {
       alert('Failed to delete note: ' + err.message);
     }
   }
 
   // ── 9. AI Resume & Cover Letter Generator & File Downloader ────────────────
-  async function queryGeminiAPI(promptText) {
-    const GEMINI_URL = 'http://192.168.50.217:5050/api/query';
+  async function getOpenWebUiSettings() {
     try {
-      const res = await fetch(GEMINI_URL, {
+      const res = await fetch(`${serverUrl}/api/settings`);
+      if (res.ok) return await res.json();
+    } catch (e) { console.error('Failed to fetch settings', e); }
+    return {};
+  }
+
+  async function fetchMasterDoc(type) {
+    try {
+      const res = await fetch(`${serverUrl}/api/master-docs/parse-sections/${type}`);
+      if (res.ok) return await res.json();
+    } catch (e) { console.warn(`Failed to fetch master ${type}`, e); }
+    return null;
+  }
+
+  async function queryAiProxy(messages, model, apiKey) {
+    try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+      
+      const res = await fetch(`${serverUrl}/api/chat-proxy/api/chat/completions`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
-          prompt: promptText,
-          model: 'gemini-flash-latest'
-        }),
-        signal: AbortSignal.timeout(8000)
+          model: model || 'llama3',
+          messages: messages
+        })
       });
       if (res.ok) {
         const data = await res.json();
-        if (data.status === 'success' && data.result) {
-          return data.result;
+        if (data.choices && data.choices.length > 0) {
+          return data.choices[0].message.content;
         }
       }
-    } catch (e) {
-      console.warn('Webhost Gemini API unavailable, generating local structured document:', e);
+    } catch(e) {
+      console.warn('AI Generation failed via proxy', e);
     }
     return null;
   }
@@ -844,10 +894,28 @@ document.addEventListener('DOMContentLoaded', async () => {
       resumeStatusMsg.classList.remove('hidden');
       generateResumeBtn.disabled = true;
 
-      const notesSummary = (activeJob.notes || []).map(n => n.text).join('; ');
-      const prompt = `Write a targeted resume profile summary and key experience bullet points tailored for the position of "${activeJob.title}" at "${activeJob.company}". Include key skills in systems administration, infrastructure engineering, software development, and automation. Job Listing URL: ${activeJob.url || 'N/A'}. Additional notes: ${notesSummary || 'None'}.`;
+      const settings = await getOpenWebUiSettings();
+      const masterResume = await fetchMasterDoc('resume');
+      
+      let masterContext = '';
+      if (masterResume) {
+        masterContext = `\n\n--- BASE MASTER RESUME ---\n${JSON.stringify(masterResume, null, 2)}\n---------------------------\n`;
+      }
 
-      let resultText = await queryGeminiAPI(prompt);
+      const notesSummary = (activeJob.notes || []).map(n => n.text).join('; ');
+      let prompt = `Write a targeted resume profile summary and key experience bullet points tailored for the position of "${activeJob.title}" at "${activeJob.company}". Include key skills in systems administration, infrastructure engineering, software development, and automation. Job Listing URL: ${activeJob.url || 'N/A'}. Additional notes: ${notesSummary || 'None'}.`;
+      
+      if (masterContext) {
+        prompt += `\nPlease use the following master resume details as the foundational context to craft the tailored resume:\n${masterContext}`;
+      }
+
+      const messages = [];
+      if (settings.openWebUiSystemPrompt) {
+        messages.push({ role: 'system', content: settings.openWebUiSystemPrompt });
+      }
+      messages.push({ role: 'user', content: prompt });
+
+      let resultText = await queryAiProxy(messages, settings.openWebUiModel, settings.openWebUiApiKey);
       if (!resultText) {
         resultText = `========================================================================\nTAILORED RESUME SUMMARY & HIGHLIGHTS\nPosition: ${activeJob.title}\nCompany: ${activeJob.company}\nDate Prepared: ${new Date().toLocaleDateString()}\nListing URL: ${activeJob.url || 'N/A'}\n========================================================================\n\nPROFESSIONAL SUMMARY\nHighly skilled technical professional applying for ${activeJob.title} at ${activeJob.company}. Proven expertise in system architecture, automated workflow development, infrastructure monitoring, and software engineering.\n\nCORE COMPETENCIES\n• Infrastructure & Server Management (Linux, Windows Server, Virtualization)\n• Software Engineering & REST API Development\n• Systems Reliability, Monitoring & Process Automation\n• Technical Problem Resolution & Continuous Integration\n\nTARGETED EXPERIENCE HIGHLIGHTS FOR ${activeJob.company.toUpperCase()}\n• Engineered high-availability server environment and streamlined deployment pipelines.\n• Automated routine technical workflows, significantly reducing operational downtime.\n• Collaborated cross-functionally to implement secure, reliable infrastructure solutions.\n`;
       }
@@ -883,10 +951,32 @@ document.addEventListener('DOMContentLoaded', async () => {
       coverStatusMsg.classList.remove('hidden');
       generateCoverBtn.disabled = true;
 
-      const notesSummary = (activeJob.notes || []).map(n => n.text).join('; ');
-      const prompt = `Write a formal, compelling, and professional cover letter applying to "${activeJob.title}" at "${activeJob.company}". Express enthusiastic interest, highlight technical skills in systems administration and software automation, and reference key details. Notes: ${notesSummary || 'None'}.`;
+      const settings = await getOpenWebUiSettings();
+      const masterResume = await fetchMasterDoc('resume');
+      const masterCover = await fetchMasterDoc('cover');
+      
+      let masterContext = '';
+      if (masterResume) {
+        masterContext += `\n--- BASE MASTER RESUME ---\n${JSON.stringify(masterResume, null, 2)}\n`;
+      }
+      if (masterCover) {
+        masterContext += `\n--- BASE MASTER COVER LETTER ---\n${JSON.stringify(masterCover, null, 2)}\n`;
+      }
 
-      let resultText = await queryGeminiAPI(prompt);
+      const notesSummary = (activeJob.notes || []).map(n => n.text).join('; ');
+      let prompt = `Write a formal, compelling, and professional cover letter applying to "${activeJob.title}" at "${activeJob.company}". Express enthusiastic interest, highlight technical skills in systems administration and software automation, and reference key details. Notes: ${notesSummary || 'None'}.`;
+      
+      if (masterContext) {
+        prompt += `\nPlease use the following master document details as the foundational context to craft the tailored cover letter:\n${masterContext}`;
+      }
+
+      const messages = [];
+      if (settings.openWebUiSystemPrompt) {
+        messages.push({ role: 'system', content: settings.openWebUiSystemPrompt });
+      }
+      messages.push({ role: 'user', content: prompt });
+
+      let resultText = await queryAiProxy(messages, settings.openWebUiModel, settings.openWebUiApiKey);
       if (!resultText) {
         const todayDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
         resultText = `${todayDate}\n\nHiring Manager\n${activeJob.company}\n\nRE: Application for ${activeJob.title} position\n\nDear Hiring Manager at ${activeJob.company},\n\nI am writing to express my strong enthusiasm for the ${activeJob.title} role at ${activeJob.company}. With my background in systems administration, software automation, and infrastructure engineering, I am confident in my ability to deliver immediate value to your organization.\n\nMy technical experience encompasses designing robust server architectures, building automated integration tools, and optimizing system uptime. I am drawn to ${activeJob.company}'s mission and would be thrilled to bring my problem-solving drive and technical expertise to your team.\n\nThank you for considering my application. I look forward to the opportunity to discuss how my qualifications align with your requirements.\n\nSincerely,\n\nPatrick Mitchell\n`;
@@ -998,18 +1088,49 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   statusPills.forEach(pill => {
     pill.addEventListener('click', () => {
-      statusPills.forEach(p => p.classList.remove('active'));
-      pill.classList.add('active');
-      currentStatusFilter = pill.dataset.status;
+      const status = pill.dataset.status;
+      if (status === 'all') {
+        activeStatuses.clear();
+        activeStatuses.add('all');
+        statusPills.forEach(p => {
+          if (p.dataset.status === 'all') p.classList.add('active');
+          else p.classList.remove('active');
+        });
+      } else {
+        activeStatuses.delete('all');
+        const allPill = Array.from(statusPills).find(p => p.dataset.status === 'all');
+        if (allPill) allPill.classList.remove('active');
+
+        if (activeStatuses.has(status)) {
+          activeStatuses.delete(status);
+          pill.classList.remove('active');
+          if (activeStatuses.size === 0) {
+            activeStatuses.add('all');
+            if (allPill) allPill.classList.add('active');
+          }
+        } else {
+          activeStatuses.add(status);
+          pill.classList.add('active');
+        }
+      }
       renderJobs();
     });
   });
 
-  datePills.forEach(pill => {
+  appliedPills.forEach(pill => {
     pill.addEventListener('click', () => {
-      datePills.forEach(p => p.classList.remove('active'));
+      appliedPills.forEach(p => p.classList.remove('active'));
       pill.classList.add('active');
-      currentDateFilter = pill.dataset.date;
+      currentAppliedFilter = pill.dataset.appliedDate;
+      renderJobs();
+    });
+  });
+
+  updatedPills.forEach(pill => {
+    pill.addEventListener('click', () => {
+      updatedPills.forEach(p => p.classList.remove('active'));
+      pill.classList.add('active');
+      currentUpdatedFilter = pill.dataset.updatedDate;
       renderJobs();
     });
   });
