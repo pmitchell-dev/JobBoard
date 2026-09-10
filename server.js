@@ -727,7 +727,7 @@ app.post('/api/jobs/:id/generate/cover-letter', async (req, res) => {
   }
 });
 // ─────────────────────────────────────────────────────────────────────────────
-\n// POST /api/screenshot/:id  — add a screenshot (supports multiple)
+// POST /api/screenshot/:id  — add a screenshot (supports multiple)
 app.post('/api/screenshot/:id', (req, res) => {
   const jobId = req.params.id;
   const { imageData } = req.body;
