@@ -5,6 +5,11 @@ let draggedJobId = null;
 let pendingAddScreenshot = null;
 let activeFilter = 'all';  // 'all' | 'today' | 'yesterday' | '7d' | '14d' | '30d' | 'custom'
 
+// Reset generative prompts to default templates
+const DEFAULT_RESUME_PROMPT = `Tailor the resume bullet points and summary for the position: "{{job.title}}" at "{{job.company}}".\n\nCANDIDATE REAL WORK HISTORY:\nName: {{skeleton.name}}\nContact: {{skeleton.contact}}\n\nPositions to Tailor Bullets For:\n{{roleList}}\n\nMaster Bullet Points:\n{{bulletContext}}\n\n{{jobContext}}\n\nReturn ONLY this JSON object:\n{\n  "summary": "3-5 sentence tailored professional summary paragraph.",\n  "competencies": [\n    {"category": "Systems & Automation", "skills": ["Skill A", "Skill B"]},\n    {"category": "Virtualization & Storage", "skills": ["Skill A"]}\n  ],\n  "jobBullets": {\n{{jobBulletsTemplate}}\n  }\n}`;
+
+const DEFAULT_COVER_LETTER_PROMPT = `You are an expert career consultant. Write a compelling, tailored COVER LETTER for the position of "{{job.title}}" at "{{job.company}}".\n\n{{masterDocTextSection}}\n\n{{jobContext}}\n\nSTRICT OUTPUT REQUIREMENTS:\n1. Generate ONLY the Cover Letter. Do NOT include a resume or work history.\n2. DO NOT ALTER PREVIOUS JOB TITLES OR FABRICATE EXPERIENCE.\n3. Address the hiring team at {{job.company}} regarding the {{job.title}} role.\n4. Output clean semantic HTML (use <h1>, <h2>, <p>, <ul>, <li>, <strong>, <em>).\n5. Do NOT wrap in markdown fences. Return ONLY raw HTML body content.`;
+
 const COLUMNS = [
   { id: 'applied',   label: 'Applied',   emoji: '📤', color: '#6366f1' },
   { id: 'screening', label: 'Screening', emoji: '📞', color: '#f59e0b' },
@@ -1887,15 +1892,22 @@ function initChatCopilot() {
         const promptEl = document.getElementById('chatSystemPrompt');
         if (promptEl) promptEl.value = data.openWebUiSystemPrompt;
       }
-      if (data.resumePrompt) {
+      if (data.resumePrompt !== undefined) {
         localStorage.setItem('jobboard_resume_prompt', data.resumePrompt);
-        const resPromptEl = document.getElementById('chatResumePrompt');
-        if (resPromptEl) resPromptEl.value = data.resumePrompt;
       }
-      if (data.coverLetterPrompt) {
+      const resPromptEl = document.getElementById('chatResumePrompt');
+      if (resPromptEl) {
+        let storedRes = localStorage.getItem('jobboard_resume_prompt');
+        resPromptEl.value = (!storedRes || storedRes.trim() === '') ? DEFAULT_RESUME_PROMPT : storedRes;
+      }
+      
+      if (data.coverLetterPrompt !== undefined) {
         localStorage.setItem('jobboard_cover_letter_prompt', data.coverLetterPrompt);
-        const covPromptEl = document.getElementById('chatCoverLetterPrompt');
-        if (covPromptEl) covPromptEl.value = data.coverLetterPrompt;
+      }
+      const covPromptEl = document.getElementById('chatCoverLetterPrompt');
+      if (covPromptEl) {
+        let storedCov = localStorage.getItem('jobboard_cover_letter_prompt');
+        covPromptEl.value = (!storedCov || storedCov.trim() === '') ? DEFAULT_COVER_LETTER_PROMPT : storedCov;
       }
 
       // Trigger models and prompts load after settings are loaded
@@ -2291,11 +2303,6 @@ function switchChatTab(tab) {
   }
 }
 
-// Reset generative prompts to default templates
-const DEFAULT_RESUME_PROMPT = `Tailor the resume bullet points and summary for the position: "{{job.title}}" at "{{job.company}}".\n\nCANDIDATE REAL WORK HISTORY:\nName: {{skeleton.name}}\nContact: {{skeleton.contact}}\n\nPositions to Tailor Bullets For:\n{{roleList}}\n\nMaster Bullet Points:\n{{bulletContext}}\n\n{{jobContext}}\n\nReturn ONLY this JSON object:\n{\n  "summary": "3-5 sentence tailored professional summary paragraph.",\n  "competencies": [\n    {"category": "Systems & Automation", "skills": ["Skill A", "Skill B"]},\n    {"category": "Virtualization & Storage", "skills": ["Skill A"]}\n  ],\n  "jobBullets": {\n{{jobBulletsTemplate}}\n  }\n}`;
-
-const DEFAULT_COVER_LETTER_PROMPT = `You are an expert career consultant. Write a compelling, tailored COVER LETTER for the position of "{{job.title}}" at "{{job.company}}".\n\n{{masterDocTextSection}}\n\n{{jobContext}}\n\nSTRICT OUTPUT REQUIREMENTS:\n1. Generate ONLY the Cover Letter. Do NOT include a resume or work history.\n2. DO NOT ALTER PREVIOUS JOB TITLES OR FABRICATE EXPERIENCE.\n3. Address the hiring team at {{job.company}} regarding the {{job.title}} role.\n4. Output clean semantic HTML (use <h1>, <h2>, <p>, <ul>, <li>, <strong>, <em>).\n5. Do NOT wrap in markdown fences. Return ONLY raw HTML body content.`;
-
 function resetResumePrompt() {
   const el = document.getElementById('chatResumePrompt');
   if (el) el.value = DEFAULT_RESUME_PROMPT;
@@ -2314,8 +2321,14 @@ function toggleChatSettings() {
   if (!pane.classList.contains('hidden')) {
     document.getElementById('chatApiKey').value = localStorage.getItem('jobboard_chat_apikey') || '';
     document.getElementById('chatSystemPrompt').value = localStorage.getItem('jobboard_chat_system_prompt') || '';
-    document.getElementById('chatResumePrompt').value = localStorage.getItem('jobboard_resume_prompt') || DEFAULT_RESUME_PROMPT;
-    document.getElementById('chatCoverLetterPrompt').value = localStorage.getItem('jobboard_cover_letter_prompt') || DEFAULT_COVER_LETTER_PROMPT;
+    
+    let resPrompt = localStorage.getItem('jobboard_resume_prompt');
+    if (!resPrompt || resPrompt.trim() === '') resPrompt = DEFAULT_RESUME_PROMPT;
+    document.getElementById('chatResumePrompt').value = resPrompt;
+    
+    let covPrompt = localStorage.getItem('jobboard_cover_letter_prompt');
+    if (!covPrompt || covPrompt.trim() === '') covPrompt = DEFAULT_COVER_LETTER_PROMPT;
+    document.getElementById('chatCoverLetterPrompt').value = covPrompt;
     
     // Clear any previous verify connection result
     const resultEl = document.getElementById('verifyConnectionResult');
