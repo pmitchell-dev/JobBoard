@@ -1887,6 +1887,16 @@ function initChatCopilot() {
         const promptEl = document.getElementById('chatSystemPrompt');
         if (promptEl) promptEl.value = data.openWebUiSystemPrompt;
       }
+      if (data.resumePrompt) {
+        localStorage.setItem('jobboard_resume_prompt', data.resumePrompt);
+        const resPromptEl = document.getElementById('chatResumePrompt');
+        if (resPromptEl) resPromptEl.value = data.resumePrompt;
+      }
+      if (data.coverLetterPrompt) {
+        localStorage.setItem('jobboard_cover_letter_prompt', data.coverLetterPrompt);
+        const covPromptEl = document.getElementById('chatCoverLetterPrompt');
+        if (covPromptEl) covPromptEl.value = data.coverLetterPrompt;
+      }
 
       // Trigger models and prompts load after settings are loaded
       refreshChatModels();
@@ -2289,6 +2299,8 @@ function toggleChatSettings() {
   if (!pane.classList.contains('hidden')) {
     document.getElementById('chatApiKey').value = localStorage.getItem('jobboard_chat_apikey') || '';
     document.getElementById('chatSystemPrompt').value = localStorage.getItem('jobboard_chat_system_prompt') || '';
+    document.getElementById('chatResumePrompt').value = localStorage.getItem('jobboard_resume_prompt') || '';
+    document.getElementById('chatCoverLetterPrompt').value = localStorage.getItem('jobboard_cover_letter_prompt') || '';
     
     // Clear any previous verify connection result
     const resultEl = document.getElementById('verifyConnectionResult');
