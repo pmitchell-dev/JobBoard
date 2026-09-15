@@ -2291,6 +2291,21 @@ function switchChatTab(tab) {
   }
 }
 
+// Reset generative prompts to default templates
+const DEFAULT_RESUME_PROMPT = `Tailor the resume bullet points and summary for the position: "{{job.title}}" at "{{job.company}}".\n\nCANDIDATE REAL WORK HISTORY:\nName: {{skeleton.name}}\nContact: {{skeleton.contact}}\n\nPositions to Tailor Bullets For:\n{{roleList}}\n\nMaster Bullet Points:\n{{bulletContext}}\n\n{{jobContext}}\n\nReturn ONLY this JSON object:\n{\n  "summary": "3-5 sentence tailored professional summary paragraph.",\n  "competencies": [\n    {"category": "Systems & Automation", "skills": ["Skill A", "Skill B"]},\n    {"category": "Virtualization & Storage", "skills": ["Skill A"]}\n  ],\n  "jobBullets": {\n{{jobBulletsTemplate}}\n  }\n}`;
+
+const DEFAULT_COVER_LETTER_PROMPT = `You are an expert career consultant. Write a compelling, tailored COVER LETTER for the position of "{{job.title}}" at "{{job.company}}".\n\n{{masterDocTextSection}}\n\n{{jobContext}}\n\nSTRICT OUTPUT REQUIREMENTS:\n1. Generate ONLY the Cover Letter. Do NOT include a resume or work history.\n2. DO NOT ALTER PREVIOUS JOB TITLES OR FABRICATE EXPERIENCE.\n3. Address the hiring team at {{job.company}} regarding the {{job.title}} role.\n4. Output clean semantic HTML (use <h1>, <h2>, <p>, <ul>, <li>, <strong>, <em>).\n5. Do NOT wrap in markdown fences. Return ONLY raw HTML body content.`;
+
+function resetResumePrompt() {
+  const el = document.getElementById('chatResumePrompt');
+  if (el) el.value = DEFAULT_RESUME_PROMPT;
+}
+
+function resetCoverLetterPrompt() {
+  const el = document.getElementById('chatCoverLetterPrompt');
+  if (el) el.value = DEFAULT_COVER_LETTER_PROMPT;
+}
+
 function toggleChatSettings() {
   const pane = document.getElementById('chatSettingsPane');
   if (!pane) return;
@@ -2299,8 +2314,8 @@ function toggleChatSettings() {
   if (!pane.classList.contains('hidden')) {
     document.getElementById('chatApiKey').value = localStorage.getItem('jobboard_chat_apikey') || '';
     document.getElementById('chatSystemPrompt').value = localStorage.getItem('jobboard_chat_system_prompt') || '';
-    document.getElementById('chatResumePrompt').value = localStorage.getItem('jobboard_resume_prompt') || '';
-    document.getElementById('chatCoverLetterPrompt').value = localStorage.getItem('jobboard_cover_letter_prompt') || '';
+    document.getElementById('chatResumePrompt').value = localStorage.getItem('jobboard_resume_prompt') || DEFAULT_RESUME_PROMPT;
+    document.getElementById('chatCoverLetterPrompt').value = localStorage.getItem('jobboard_cover_letter_prompt') || DEFAULT_COVER_LETTER_PROMPT;
     
     // Clear any previous verify connection result
     const resultEl = document.getElementById('verifyConnectionResult');
@@ -2373,6 +2388,8 @@ async function saveChatSettings() {
   const apiKey = document.getElementById('chatApiKey').value.trim();
   const model = document.getElementById('chatModelSelect').value;
   const systemPrompt = document.getElementById('chatSystemPrompt').value.trim();
+  const resumePrompt = document.getElementById('chatResumePrompt').value.trim();
+  const coverLetterPrompt = document.getElementById('chatCoverLetterPrompt').value.trim();
   const hostInput = document.getElementById('chatHost').value.trim();
   const portInput = document.getElementById('chatPort').value.trim();
 
@@ -2395,6 +2412,8 @@ async function saveChatSettings() {
   localStorage.setItem('jobboard_chat_apikey', apiKey);
   localStorage.setItem('jobboard_chat_model', model);
   localStorage.setItem('jobboard_chat_system_prompt', systemPrompt);
+  localStorage.setItem('jobboard_resume_prompt', resumePrompt);
+  localStorage.setItem('jobboard_cover_letter_prompt', coverLetterPrompt);
 
   const saveBtn = document.querySelector('#chatSettingsPane .btn-primary');
   const originalText = saveBtn ? saveBtn.textContent : 'Save Settings';
@@ -2413,7 +2432,9 @@ async function saveChatSettings() {
         openWebUiPort: port,
         openWebUiApiKey: apiKey,
         openWebUiModel: model,
-        openWebUiSystemPrompt: systemPrompt
+        openWebUiSystemPrompt: systemPrompt,
+        resumePrompt: resumePrompt,
+        coverLetterPrompt: coverLetterPrompt
       })
     });
     
