@@ -28,36 +28,6 @@ const MASTER_DOCS_META_FILE = path.join(MASTER_DOCS_DIR, 'metadata.json');
 // ── Bootstrap directories ────────────────────────────────────────────────────
 [DATA_DIR, CACHE_DIR, BACKUPS_DIR, MASTER_DOCS_DIR].forEach(dir => {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-const express = require('express');
-const fs = require('fs');
-const path = require('path');
-const { v4: uuidv4 } = require('uuid');
-const puppeteer = require('puppeteer');
-const archiver = require('archiver');
-const unzipper = require('unzipper');
-const multer  = require('multer');
-const fetch = require('node-fetch');
-const mammoth = require('mammoth');
-const http = require('http');
-const https = require('https');
-
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-// ── Paths ────────────────────────────────────────────────────────────────────
-const DATA_DIR              = path.join(__dirname, 'data');
-const CACHE_DIR             = path.join(__dirname, 'cache');
-const BACKUPS_DIR           = path.join(DATA_DIR, 'backups');
-const MASTER_DOCS_DIR       = path.join(DATA_DIR, 'master_docs');
-const JOBS_FILE             = path.join(DATA_DIR, 'jobs.json');
-const BACKUP_FILE           = path.join(DATA_DIR, 'jobs.backup.json');
-const NOTEPAD_FILE          = path.join(DATA_DIR, 'notepad.json');
-const SETTINGS_FILE         = path.join(DATA_DIR, 'settings.json');
-const MASTER_DOCS_META_FILE = path.join(MASTER_DOCS_DIR, 'metadata.json');
-
-// ── Bootstrap directories ────────────────────────────────────────────────────
-[DATA_DIR, CACHE_DIR, BACKUPS_DIR, MASTER_DOCS_DIR].forEach(dir => {
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 });
 
 if (!fs.existsSync(JOBS_FILE)) {
@@ -80,9 +50,7 @@ let settings = {
   openWebUiPort: 3002,
   openWebUiApiKey: '',
   openWebUiModel: '',
-  openWebUiSystemPrompt: '',
-  resumePrompt: '',
-  coverLetterPrompt: ''
+  openWebUiSystemPrompt: ''
 };
 
 if (fs.existsSync(SETTINGS_FILE)) {
@@ -778,6 +746,594 @@ app.post('/api/jobs/:id/generate/cover-letter', async (req, res) => {
   }
 });
 // ─────────────────────────────────────────────────────────────────────────────
+// POST /api/screenshot/:id  — add a screenshot (supports multiple)
+app.post('/api/screenshot/:id', (req, res) => {
+  const jobId = req.params.id;
+  const { imageData } = req.body;
+  if (!imageData) return res.status(400).json({ error: 'imageData required' });
+
+  try {
+    const screenshotId = uuidv4();
+    const base64  = imageData.replace(/^data:image\/\w+;base64,/, '');
+    const buffer  = Buffer.from(base64, 'base64');
+    const filename = `${jobId}-screenshot-${screenshotId}.png`;
+    fs.writeFileSync(path.join(CACHE_DIR, filename), buffer);
+
+    const jobs = readJobs();
+    const idx  = jobs.findIndex(j => j.id === jobId);
+    if (idx === -1) return res.status(404).json({ error: 'Job not found' });
+
+    if (!Array.isArray(jobs[idx].screenshots)) jobs[idx].screenshots = [];
+    const screenshot = { id: screenshotId, filename, addedAt: new Date().toISOString() };
+    jobs[idx].screenshots.push(screenshot);
+    jobs[idx].updatedAt = new Date().toISOString();
+    writeJobs(jobs);
+
+    res.json({ success: true, screenshot, url: `/cache/${filename}` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/screenshot/:id/:screenshotId  — remove one screenshot
+app.delete('/api/screenshot/:id/:screenshotId', (req, res) => {
+  const { id: jobId, screenshotId } = req.params;
+
+  const jobs = readJobs();
+  const idx  = jobs.findIndex(j => j.id === jobId);
+  if (idx === -1) return res.status(404).json({ error: 'Job not found' });
+
+  const job = jobs[idx];
+  if (Array.isArray(job.screenshots)) {
+    const shot = job.screenshots.find(s => s.id === screenshotId);
+    if (shot) {
+      const f = path.join(CACHE_DIR, shot.filename);
+      if (fs.existsSync(f)) fs.unlinkSync(f);
+    }
+    job.screenshots = job.screenshots.filter(s => s.id !== screenshotId);
+  }
+  job.updatedAt = new Date().toISOString();
+  writeJobs(jobs);
+  res.json({ success: true });
+});
+
+// GET /api/notepad  — load notepad content
+app.get('/api/notepad', (req, res) => {
+  try {
+    const data = JSON.parse(fs.readFileSync(NOTEPAD_FILE, 'utf8'));
+    res.json(data);
+  } catch {
+    res.json({ text: '', updatedAt: null });
+  }
+});
+
+// PUT /api/notepad  — save notepad content (with backup)
+app.put('/api/notepad', (req, res) => {
+  try {
+    const text = typeof req.body.text === 'string' ? req.body.text : '';
+    const now  = new Date().toISOString();
+
+    // Rolling backup of previous notepad
+    if (fs.existsSync(NOTEPAD_FILE)) {
+      fs.copyFileSync(NOTEPAD_FILE, path.join(DATA_DIR, 'notepad.backup.json'));
+    }
+
+    // Daily snapshot (stored alongside job snapshots)
+    const today = now.split('T')[0];
+    const dailyNotepad = path.join(BACKUPS_DIR, `notepad-${today}.json`);
+    if (!fs.existsSync(dailyNotepad) && fs.existsSync(NOTEPAD_FILE)) {
+      fs.copyFileSync(NOTEPAD_FILE, dailyNotepad);
+    }
+
+    // Prune old notepad daily backups — keep last 14
+    const npBackups = fs.readdirSync(BACKUPS_DIR)
+      .filter(f => f.startsWith('notepad-') && f.endsWith('.json'))
+      .sort();
+    while (npBackups.length > 14) {
+      fs.unlinkSync(path.join(BACKUPS_DIR, npBackups.shift()));
+    }
+
+    const payload = { text, updatedAt: now };
+    fs.writeFileSync(NOTEPAD_FILE, JSON.stringify(payload, null, 2));
+    res.json(payload);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Master Base Documents (.docx) ────────────────────────────────────────────
+
+function readMasterDocsMeta() {
+  try {
+    if (fs.existsSync(MASTER_DOCS_META_FILE)) {
+      return JSON.parse(fs.readFileSync(MASTER_DOCS_META_FILE, 'utf8'));
+    }
+  } catch (err) {
+    console.error('[MasterDocs] Failed to read metadata:', err.message);
+  }
+  return { resume: null, coverLetter: null };
+}
+
+function writeMasterDocsMeta(meta) {
+  try {
+    fs.writeFileSync(MASTER_DOCS_META_FILE, JSON.stringify(meta, null, 2));
+  } catch (err) {
+    console.error('[MasterDocs] Failed to write metadata:', err.message);
+  }
+}
+
+const masterDocsStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, MASTER_DOCS_DIR);
+  },
+  filename: (req, file, cb) => {
+    const rawType = (req.params?.type || req.body?.docType || req.query?.docType || '').toLowerCase();
+    const isCover = rawType.includes('cover');
+    const targetName = isCover ? 'master_cover_letter.docx' : 'master_resume.docx';
+    cb(null, targetName);
+  }
+});
+
+const uploadMasterDoc = multer({
+  storage: masterDocsStorage,
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (ext === '.docx' || file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+      cb(null, true);
+    } else {
+      cb(new Error('Only .docx files are permitted for master base documents.'));
+    }
+  },
+  limits: { fileSize: 25 * 1024 * 1024 }
+});
+
+// GET /api/master-docs  — get status/metadata for master resume & cover letter
+app.get('/api/master-docs', (req, res) => {
+  const meta = readMasterDocsMeta();
+  const resumePath = path.join(MASTER_DOCS_DIR, 'master_resume.docx');
+  const coverPath  = path.join(MASTER_DOCS_DIR, 'master_cover_letter.docx');
+  res.json({
+    resume: (meta.resume && fs.existsSync(resumePath)) ? meta.resume : null,
+    coverLetter: (meta.coverLetter && fs.existsSync(coverPath)) ? meta.coverLetter : null
+  });
+});
+
+// POST /api/master-docs/upload (and /api/master-docs/upload/:type)  — upload master .docx
+app.post(['/api/master-docs/upload', '/api/master-docs/upload/:type'], (req, res) => {
+  uploadMasterDoc.single('file')(req, res, (err) => {
+    if (err) return res.status(400).json({ error: err.message });
+    if (!req.file) return res.status(400).json({ error: 'No .docx file uploaded' });
+
+    const rawType = (req.params?.type || req.body?.docType || req.query?.docType || '').toLowerCase();
+    const type = rawType.includes('cover') ? 'coverLetter' : 'resume';
+    const meta = readMasterDocsMeta();
+
+    meta[type] = {
+      filename: req.file.originalname,
+      storedName: req.file.filename,
+      size: req.file.size,
+      uploadedAt: new Date().toISOString()
+    };
+
+    writeMasterDocsMeta(meta);
+    createBackup();
+    res.json({ success: true, docType: type, data: meta[type] });
+  });
+});
+
+// GET /api/master-docs/download/:type  — download master .docx
+app.get('/api/master-docs/download/:type', (req, res) => {
+  const isCover = (req.params.type || '').toLowerCase().includes('cover');
+  const type = isCover ? 'coverLetter' : 'resume';
+  const fileName = isCover ? 'master_cover_letter.docx' : 'master_resume.docx';
+  const filePath = path.join(MASTER_DOCS_DIR, fileName);
+  const meta = readMasterDocsMeta();
+  const docMeta = meta[type];
+
+  if (!fs.existsSync(filePath) || !docMeta) {
+    return res.status(404).json({ error: 'Master document not found' });
+  }
+
+  res.download(filePath, docMeta.filename || fileName);
+});
+
+// DELETE /api/master-docs/:type  — delete master .docx
+app.delete('/api/master-docs/:type', (req, res) => {
+  const isCover = (req.params.type || '').toLowerCase().includes('cover');
+  const type = isCover ? 'coverLetter' : 'resume';
+  const fileName = isCover ? 'master_cover_letter.docx' : 'master_resume.docx';
+  const filePath = path.join(MASTER_DOCS_DIR, fileName);
+
+  if (fs.existsSync(filePath)) {
+    fs.unlinkSync(filePath);
+  }
+
+  const meta = readMasterDocsMeta();
+  meta[type] = null;
+  writeMasterDocsMeta(meta);
+  createBackup();
+
+  res.json({ success: true, docType: type });
+});
+
+// GET /api/master-docs/debug-html/:type  — returns raw mammoth HTML for debugging
+app.get('/api/master-docs/debug-html/:type', async (req, res) => {
+  const isCover = (req.params.type || '').toLowerCase().includes('cover');
+  const fileName = isCover ? 'master_cover_letter.docx' : 'master_resume.docx';
+  const filePath = path.join(MASTER_DOCS_DIR, fileName);
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
+  try {
+    const docxBuffer = fs.readFileSync(filePath);
+    const { value: html } = await mammoth.convertToHtml({ buffer: docxBuffer });
+    res.type('text/plain').send(html);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/master-docs/parse-sections/:type  — parse master .docx into structured skeleton JSON
+app.get('/api/master-docs/parse-sections/:type', async (req, res) => {
+  const isCover = (req.params.type || '').toLowerCase().includes('cover');
+  const fileName = isCover ? 'master_cover_letter.docx' : 'master_resume.docx';
+  const filePath = path.join(MASTER_DOCS_DIR, fileName);
+
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: 'No master document found. Please upload a master resume first.' });
+  }
+
+  try {
+    const docxBuffer = fs.readFileSync(filePath);
+    const { value: html } = await mammoth.convertToHtml({ buffer: docxBuffer });
+
+    // ── Helpers ────────────────────────────────────────────────────────────
+    const stripTags = (s) => (s || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+
+    // Check if a string looks like an all-caps or title-case section header
+    // Check if a string looks like an all-caps or title-case section header
+    const KNOWN_SECTIONS = ['SUMMARY', 'COMPETENCIES', 'SKILLS', 'EXPERIENCE', 'WORK', 'EMPLOYMENT', 'CAREER', 'HISTORY', 'BACKGROUND', 'PROJECT', 'EDUCATION'];
+    const isSectionHeader = (text) => {
+      const upper = text.toUpperCase().trim();
+      return KNOWN_SECTIONS.some(s => upper.includes(s));
+    };
+
+    // ── Normalize: find section boundaries regardless of heading style ─────
+    // Strategy: replace <p><strong>SECTION TITLE</strong></p> with <h2>SECTION TITLE</h2>
+    // so the rest of the parser works the same way regardless of Word style used.
+    let normalizedHtml = html
+      // Handle: <p><strong>SECTION NAME</strong></p>
+      .replace(/<p[^>]*>\s*<strong[^>]*>([\s\S]*?)<\/strong>\s*<\/p>/gi, (match, inner) => {
+        const text = inner.replace(/<[^>]*>/g, '').trim();
+        if (isSectionHeader(text)) return `<h2>${text}</h2>`;
+        return match;
+      })
+      // Handle: <p><b>SECTION NAME</b></p>
+      .replace(/<p[^>]*>\s*<b[^>]*>([\s\S]*?)<\/b>\s*<\/p>/gi, (match, inner) => {
+        const text = inner.replace(/<[^>]*>/g, '').trim();
+        if (isSectionHeader(text)) return `<h2>${text}</h2>`;
+        return match;
+      });
+
+    // ── Split on h1 and h2 boundaries ─────────────────────────────────────
+    const sectionSplitter = /(?=<h[12][^>]*>)/gi;
+    const rawSections = normalizedHtml.split(sectionSplitter).filter(s => s.trim());
+
+    const sections = { experience: [] };
+
+    // ── Header region: name + contact ─────────────────────────────────────
+    const headerChunk = rawSections[0] || normalizedHtml;
+
+    // Name: prefer <h1>, fall back to first <p><strong> or large text at top
+    const h1Match = headerChunk.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+    if (h1Match) {
+      sections.name = stripTags(h1Match[1]);
+    } else {
+      // Fall back: first bold/strong paragraph at top of document
+      const boldNameMatch = headerChunk.match(/<(?:p|div)[^>]*>\s*<(?:strong|b)[^>]*>([\s\S]*?)<\/(?:strong|b)>/i);
+      sections.name = boldNameMatch ? stripTags(boldNameMatch[1]) : '';
+    }
+
+    // Contact: paragraph containing | or @ near the top
+    const allParas = [...headerChunk.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/gi)];
+    for (const m of allParas) {
+      const text = stripTags(m[1]);
+      if (text.includes('|') || text.includes('@') || text.match(/\(\d{3}\)/)) {
+        sections.contact = text;
+        break;
+      }
+    }
+    if (!sections.contact && sections.name) {
+      // Second paragraph after name often contains contact info
+      const pAfterName = allParas[1];
+      if (pAfterName) sections.contact = stripTags(pAfterName[1]);
+    }
+
+    // ── Process h2 sections ────────────────────────────────────────────────
+    rawSections.forEach(chunk => {
+      const h2Match = chunk.match(/^<h2[^>]*>([\s\S]*?)<\/h2>/i);
+      if (!h2Match) return;
+      const sectionTitle = stripTags(h2Match[1]).toUpperCase().trim();
+      const sectionBody = chunk.replace(/^<h2[^>]*>[\s\S]*?<\/h2>/i, '').trim();
+
+      if (sectionTitle.includes('SUMMARY')) {
+        // Take all <p> text in the summary section
+        const pMatches = [...sectionBody.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/gi)];
+        sections.summary = pMatches.map(m => stripTags(m[1])).filter(Boolean).join(' ');
+
+      } else if (sectionTitle.includes('COMPETENCIES') || sectionTitle.includes('SKILLS')) {
+        sections.competenciesHtml = sectionBody;
+
+      } else if (
+        sectionTitle.includes('EXPERIENCE') ||
+        sectionTitle.includes('WORK') ||
+        sectionTitle.includes('EMPLOYMENT') ||
+        sectionTitle.includes('CAREER') ||
+        sectionTitle.includes('HISTORY')
+      ) {
+        parseExperienceSection(sectionBody, sections, stripTags);
+
+      } else if (sectionTitle.includes('PROJECT')) {
+        sections.projectsHtml = sectionBody;
+
+      } else if (sectionTitle.includes('EDUCATION')) {
+        sections.educationHtml = sectionBody;
+      }
+    });
+
+    // ── Fallback: if no experience parsed, try to extract from full HTML ──
+    if (sections.experience.length === 0) {
+      parseExperienceSection(normalizedHtml, sections, stripTags);
+    }
+
+    // ── Final validation ───────────────────────────────────────────────────
+    const hasContent = sections.name || sections.summary || sections.experience.length > 0;
+    if (!hasContent) {
+      return res.status(422).json({
+        error: 'Could not extract resume structure. The document may use unsupported formatting. Please ensure your resume uses Word heading styles (Heading 1 for name, Heading 2 for section titles) or standard bold paragraph formatting.',
+        debugHint: `Mammoth produced ${html.length} characters of HTML. First 500 chars: ${html.substring(0, 500)}`
+      });
+    }
+
+    res.json({
+      name: sections.name || '',
+      contact: sections.contact || '',
+      summary: sections.summary || '',
+      competenciesHtml: sections.competenciesHtml || '',
+      experience: sections.experience || [],
+      projectsHtml: sections.projectsHtml || '',
+      educationHtml: sections.educationHtml || ''
+    });
+
+  } catch (err) {
+    console.error('[parse-sections] Error:', err.message);
+    res.status(500).json({ error: 'Failed to parse master document: ' + err.message });
+  }
+});
+
+function parseExperienceSection(html, sections, stripTags) {
+  const datePattern = /(?:(?:[A-Za-z]+\.?\s+)?\d{4}\s*[-–—to\s]+\s*(?:(?:[A-Za-z]+\.?\s+)?\d{4}|Present|Current|Now))/i;
+
+  // ── Strategy 1: Table-based experience sections (e.g. Word tables) ───────
+  const tableMatches = [...html.matchAll(/<table[^>]*>([\s\S]*?)<\/table>/gi)];
+
+  if (tableMatches.length > 0) {
+    const parts = html.split(/(?=<table[^>]*>)/gi).filter(Boolean);
+
+    parts.forEach(part => {
+      const tableMatch = part.match(/^<table[^>]*>([\s\S]*?)<\/table>/i);
+      if (!tableMatch) return;
+
+      const tableContent = tableMatch[1];
+      const rowMatches = [...tableContent.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)];
+
+      let compOrTitle1 = '', locOrDates1 = '';
+      let compOrTitle2 = '', locOrDates2 = '';
+
+      rowMatches.forEach((rMatch, rIdx) => {
+        const cellMatches = [...rMatch[1].matchAll(/<(?:th|td)[^>]*>([\s\S]*?)<\/(?:th|td)>/gi)];
+        const cellTexts = cellMatches.map(c => stripTags(c[1]));
+
+        if (rIdx === 0) {
+          compOrTitle1 = cellTexts[0] || '';
+          locOrDates1 = cellTexts[1] || '';
+        } else if (rIdx === 1) {
+          compOrTitle2 = cellTexts[0] || '';
+          locOrDates2 = cellTexts[1] || '';
+        }
+      });
+
+      let jobTitle = '', company = '', location = '', dates = '';
+
+      if (datePattern.test(locOrDates2)) {
+        dates = (locOrDates2.match(datePattern) || [])[0] || locOrDates2;
+        jobTitle = compOrTitle2 || compOrTitle1;
+        company = compOrTitle1 !== jobTitle ? compOrTitle1 : '';
+        location = locOrDates1;
+      } else if (datePattern.test(locOrDates1)) {
+        dates = (locOrDates1.match(datePattern) || [])[0] || locOrDates1;
+        jobTitle = compOrTitle1;
+        company = compOrTitle2;
+        location = locOrDates2;
+      } else {
+        jobTitle = compOrTitle1;
+        company = compOrTitle2;
+        location = locOrDates1;
+        dates = locOrDates2;
+      }
+
+      const bullets = [];
+      const liMatches = [...part.matchAll(/<li[^>]*>([\s\S]*?)<\/li>/gi)];
+      liMatches.forEach(lm => {
+        const bText = stripTags(lm[1]);
+        if (bText.length > 10) bullets.push(bText);
+      });
+
+      if (jobTitle || company) {
+        sections.experience.push({
+          key: `${jobTitle} @ ${company || 'Company'}`,
+          title: jobTitle,
+          company: company,
+          sub: '',
+          location: location,
+          dates: dates,
+          masterBullets: bullets
+        });
+      }
+    });
+
+    if (sections.experience.length > 0) return;
+  }
+
+  // ── Strategy 2: Paragraph-based experience sections ──────────────────────
+  const paras = [...html.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/gi)];
+
+  let currentJob = null;
+
+  paras.forEach((m, idx) => {
+    const rawHtml = m[1];
+    const text = stripTags(rawHtml);
+    if (!text || text.length < 2) return;
+
+    const hasDate = datePattern.test(text);
+    const hasBold = /<(?:strong|b)[^>]*>/i.test(rawHtml);
+    const isItalic = /^\s*<(?:em|i)[^>]*>/.test(rawHtml.trim()) || /^<em>/.test(rawHtml.trim());
+    const isBullet = /<li/i.test(rawHtml) || text.startsWith('•') || text.startsWith('-');
+    const isSectionHeader = ['SUMMARY','COMPETENCIES','SKILLS','EXPERIENCE','PROJECT','EDUCATION'].some(s => text.toUpperCase().includes(s) && text.length < 50);
+
+    const isEducationOrName = (t) => {
+      const upper = t.toUpperCase().trim();
+      if (sections.name && upper.includes(sections.name.toUpperCase())) return true;
+      return upper.includes('BACHELOR') ||
+             upper.includes('ASSOCIATE') ||
+             upper.includes('MASTER') ||
+             upper.includes('UNIVERSITY') ||
+             upper.includes('COLLEGE') ||
+             upper.includes('DEGREE') ||
+             upper.includes('DIPLOMA') ||
+             upper.includes('GITHUB:') ||
+             upper.includes('@GMAIL.COM');
+    };
+
+    if (isSectionHeader || isEducationOrName(text)) {
+      if (currentJob) { sections.experience.push(currentJob); currentJob = null; }
+      return;
+    }
+
+    if ((hasDate || hasBold) && text.length < 250 && !isBullet && !isSectionHeader && !isEducationOrName(text)) {
+      const dateMatch = text.match(datePattern);
+      const dates = dateMatch ? dateMatch[0].trim() : '';
+      const matchIdx = dateMatch ? text.indexOf(dateMatch[0]) : -1;
+      const beforeDate = matchIdx !== -1 ? text.substring(0, matchIdx).trim() : text;
+
+      // Extract parts separated by tabs, multiple spaces, or vertical bars |
+      const subParts = beforeDate.split(/\t|\s{2,}|\|/).map(s => s.trim()).filter(Boolean);
+      let rawTitleComp = subParts[0] || beforeDate;
+      let location = subParts.length > 1 ? subParts[subParts.length - 1] : '';
+
+      let jobTitle = rawTitleComp;
+      let company = '';
+
+      // Check for dash separator in rawTitleComp (e.g., "Title – Company")
+      const dashMatch = rawTitleComp.match(/^(.+?)\s*[-–—]\s*(.+)$/);
+      if (dashMatch) {
+        jobTitle = dashMatch[1].trim();
+        company = dashMatch[2].trim();
+      }
+
+      if (currentJob) sections.experience.push(currentJob);
+
+      currentJob = {
+        key: `${jobTitle} @ ${company || 'Company'}`,
+        title: jobTitle,
+        company: company,
+        sub: '',
+        location: location,
+        dates: dates,
+        masterBullets: []
+      };
+
+    } else if (currentJob && isItalic && !currentJob.sub && text.length < 150) {
+      // Sub-line: "(Department) – Company Name"
+      const companyMatch = text.match(/[-–—]\s*(.+)$/);
+      if (companyMatch && !currentJob.company) {
+        currentJob.company = companyMatch[1].trim();
+        currentJob.sub = text.replace(/[-–—]\s*.+$/, '').trim();
+      } else if (!currentJob.company) {
+        currentJob.company = text;
+      } else {
+        currentJob.sub = text;
+      }
+      currentJob.key = `${currentJob.title} @ ${currentJob.company || currentJob.title}`;
+
+    } else if (currentJob && text.length > 20 && !hasDate) {
+      // Bullet point or paragraph within a job
+      const cleanBullet = text.replace(/^[•\-–]\s*/, '').trim();
+      if (cleanBullet.length > 10) {
+        currentJob.masterBullets.push(cleanBullet);
+      }
+    }
+  });
+
+  if (currentJob) sections.experience.push(currentJob);
+
+  // Also grab bullets from <ul><li> patterns (some formats use lists)
+  const liMatches = [...html.matchAll(/<li[^>]*>([\s\S]*?)<\/li>/gi)];
+  if (liMatches.length > 0 && sections.experience.length > 0) {
+    liMatches.forEach(lm => {
+      const bulletText = stripTags(lm[1]).trim();
+      if (bulletText.length > 10 && sections.experience.length > 0) {
+        const lastJob = sections.experience[sections.experience.length - 1];
+        if (!lastJob.masterBullets.includes(bulletText)) {
+          lastJob.masterBullets.push(bulletText);
+        }
+      }
+    });
+  }
+}
+
+// ── Settings ───────────────────────────────────────────────────────────────
+
+
+function getCleanHost(host) {
+  let clean = host.trim().toLowerCase();
+  if (clean.startsWith('https://')) {
+    clean = clean.replace('https://', '');
+  } else if (clean.startsWith('http://')) {
+    clean = clean.replace('http://', '');
+  }
+  return clean.split('/')[0].split(':')[0];
+}
+
+function isLocalHostOrIp(host) {
+  const clean = getCleanHost(host);
+  if (!clean) return false;
+
+  if (clean === 'localhost' || clean === '127.0.0.1' || clean === '::1') {
+    return true;
+  }
+
+  if (clean.endsWith('.local') || clean.endsWith('.internal')) {
+    return true;
+  }
+
+  if (!clean.includes('.')) {
+    return true; // simple hostname (local machine)
+  }
+
+  // IPv4 Private networks regex matches
+  const ipv4Regex = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
+  const match = clean.match(ipv4Regex);
+  if (match) {
+    const o1 = parseInt(match[1], 10);
+    const o2 = parseInt(match[2], 10);
+    const o3 = parseInt(match[3], 10);
+    const o4 = parseInt(match[4], 10);
+
+    if (o1 > 255 || o2 > 255 || o3 > 255 || o4 > 255) return false;
+
+    // 127.0.0.0/8 (Loopback)
+    if (o1 === 127) return true;
+    // 10.0.0.0/8 (Class A Private)
+    if (o1 === 10) return true;
     // 172.16.0.0/12 (Class B Private)
     if (o1 === 172 && (o2 >= 16 && o2 <= 31)) return true;
     // 192.168.0.0/16 (Class C Private)
@@ -819,6 +1375,8 @@ app.put('/api/settings', (req, res) => {
   if (req.body.openWebUiApiKey !== undefined) settings.openWebUiApiKey = req.body.openWebUiApiKey;
   if (req.body.openWebUiModel !== undefined) settings.openWebUiModel = req.body.openWebUiModel;
   if (req.body.openWebUiSystemPrompt !== undefined) settings.openWebUiSystemPrompt = req.body.openWebUiSystemPrompt;
+  if (req.body.resumePrompt !== undefined) settings.resumePrompt = req.body.resumePrompt;
+  if (req.body.coverLetterPrompt !== undefined) settings.coverLetterPrompt = req.body.coverLetterPrompt;
   
   try {
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
