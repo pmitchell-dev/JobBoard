@@ -40,9 +40,9 @@ if (!fs.existsSync(MASTER_DOCS_META_FILE)) {
   fs.writeFileSync(MASTER_DOCS_META_FILE, JSON.stringify({ resume: null, coverLetter: null }, null, 2));
 }
 
-const DEFAULT_RESUME_PROMPT = `Tailor the resume bullet points and summary for the position: "{{job.title}}" at "{{job.company}}".\n\nCANDIDATE REAL WORK HISTORY:\nName: {{skeleton.name}}\nContact: {{skeleton.contact}}\n\nPositions to Tailor Bullets For:\n{{roleList}}\n\nMaster Bullet Points:\n{{bulletContext}}\n\n{{jobContext}}\n\nCRITICAL INSTRUCTION: You MUST retain the 'Education', 'Certifications', 'Projects', 'Technical Projects', and any similar academic or project sections exactly as they appear in the master bullet points (or tailored if appropriate). Do NOT omit them from the final JSON.\n\nReturn ONLY this JSON object:\n{\n  "summary": "3-5 sentence tailored professional summary paragraph.",\n  "competencies": [\n    {"category": "Systems & Automation", "skills": ["Skill A", "Skill B"]},\n    {"category": "Virtualization & Storage", "skills": ["Skill A"]}\n  ],\n  "jobBullets": {\n{{jobBulletsTemplate}}\n  }\n}`;
+const DEFAULT_RESUME_PROMPT = `Tailor the resume bullet points and summary for the position: "{{job.title}}" at "{{job.company}}".\n\nCANDIDATE REAL WORK HISTORY:\nName: {{skeleton.name}}\nContact: {{skeleton.contact}}\n\nPositions to Tailor Bullets For:\n{{roleList}}\n\nMaster Bullet Points:\n{{bulletContext}}\n\nEducation History:\n{{educationHtml}}\n\nProject History:\n{{projectsHtml}}\n\n{{jobContext}}\n\nCRITICAL INSTRUCTION: You MUST retain the 'Education', 'Certifications', 'Projects', 'Technical Projects', and any similar academic or project sections exactly as they appear in the master bullet points (or tailored if appropriate). Do NOT omit them from the final JSON.\n\nReturn ONLY this JSON object:\n{\n  "summary": "3-5 sentence tailored professional summary paragraph.",\n  "competencies": [\n    {"category": "Systems & Automation", "skills": ["Skill A", "Skill B"]},\n    {"category": "Virtualization & Storage", "skills": ["Skill A"]}\n  ],\n  "jobBullets": {\n{{jobBulletsTemplate}}\n  },\n  "education": "HTML formatted string containing the education section (e.g. <h3>Degree</h3><p>University, Year</p>). Include exactly as provided or tailored for the role.",\n  "projects": "HTML formatted string containing the projects section (e.g. <h3>Project Name</h3><p>Description</p>). Include exactly as provided or tailored for the role."\n}`;
 
-const DEFAULT_COVER_LETTER_PROMPT = `You are an expert career consultant. Write a compelling, tailored COVER LETTER for the position of "{{job.title}}" at "{{job.company}}".\n\n{{masterDocTextSection}}\n\n{{jobContext}}\n\nSTRICT OUTPUT REQUIREMENTS:\n1. Generate ONLY the Cover Letter. Do NOT include a resume or work history.\n2. DO NOT ALTER PREVIOUS JOB TITLES OR FABRICATE EXPERIENCE. Draw from the provided work history, education, and technical projects to highlight relevant qualifications.\n3. Address the hiring team at {{job.company}} regarding the {{job.title}} role.\n4. Output clean semantic HTML (use <h1>, <h2>, <p>, <ul>, <li>, <strong>, <em>).\n5. Do NOT wrap in markdown fences. Return ONLY raw HTML body content.`;
+const DEFAULT_COVER_LETTER_PROMPT = `You are an expert career consultant. Write a compelling, tailored COVER LETTER for the position of "{{job.title}}" at "{{job.company}}".\n\n{{masterDocTextSection}}\n\nCandidate Resume Background:\n{{masterResumeText}}\n\n{{jobContext}}\n\nSTRICT OUTPUT REQUIREMENTS:\n1. Generate ONLY the Cover Letter. Do NOT include a resume or work history.\n2. DO NOT ALTER PREVIOUS JOB TITLES OR FABRICATE EXPERIENCE. Draw from the provided resume background (work history, education, and technical projects) to highlight relevant qualifications.\n3. Address the hiring team at {{job.company}} regarding the {{job.title}} role.\n4. Output clean semantic HTML (use <h1>, <h2>, <p>, <ul>, <li>, <strong>, <em>).\n5. Do NOT wrap in markdown fences. Return ONLY raw HTML body content.`;
 
 let settings = {
   localAddress: 'http://localhost:3000',
@@ -621,6 +621,12 @@ app.post('/api/jobs/:id/generate/resume', async (req, res) => {
       }
     }
 
+    const projSec = sections.find(s => ['PROJECT', 'TECHNICAL PROJECT'].some(k => s.title.includes(k)));
+    if (projSec) skeleton.projectsHtml = projSec.html;
+
+    const eduSec = sections.find(s => ['EDUCATION', 'CERTIFICATION', 'ACADEMIC'].some(k => s.title.includes(k)));
+    if (eduSec) skeleton.educationHtml = eduSec.html;
+
     const defaultCandidateJobs = [
       { key: "System Engineer II /Data Analyst (Infrastructure & Backend Ops) @ Cerner / Oracle Health", title: "System Engineer II /Data Analyst (Infrastructure & Backend Ops)", company: "Cerner / Oracle Health", sub: "", location: "Kansas City, MO", dates: "April 2017 – June 2026", masterBullets: ["Deliver advanced tier-3 technical support...", "Execute administrative operations...", "Design and sustain complex TCP/IP networks...", "Develop Python and PowerShell scripting architectures...", "Perform complex infrastructure project assessments..."] },
       { key: "Network Administrator / IT Administrator @ Miller Eye Center", title: "Network Administrator / IT Administrator", company: "Miller Eye Center", sub: "", location: "Rockford, IL", dates: "April 2014 – 2017", masterBullets: ["Supported a highly available local data network...", "Directed the installation and ongoing performance management...", "Constructed and sustained a stable, virtualized server environment..."] }
@@ -649,6 +655,8 @@ app.post('/api/jobs/:id/generate/resume', async (req, res) => {
       .replace(/\{\{roleList\}\}/g, roleList)
       .replace(/\{\{bulletContext\}\}/g, bulletContext)
       .replace(/\{\{jobContext\}\}/g, jobContext)
+      .replace(/\{\{educationHtml\}\}/g, skeleton.educationHtml || 'None provided')
+      .replace(/\{\{projectsHtml\}\}/g, skeleton.projectsHtml || 'None provided')
       .replace(/\{\{jobBulletsTemplate\}\}/g, jobBulletsTemplate);
 
     const modelName = settings.openWebUiModel || 'gemini-flash-latest';
@@ -685,7 +693,15 @@ app.post('/api/jobs/:id/generate/resume', async (req, res) => {
       return `<div class="job-header"><span>${j.title}</span><span>${rightText}</span></div>\n${subLine ? `<div class="job-sub"><em>${subLine}</em></div>\n` : ''}<ul>${liItems}</ul>`;
     }).join('\n');
 
-    const finalHtml = `<h1>${skeleton.name || 'PATRICK MITCHELL'}</h1>\n<p class="contact">${skeleton.contact || 'Gladstone, MO | (515) 771-3320 | pmitchell.dev@gmail.com'}</p>\n<h2>PROFESSIONAL SUMMARY</h2>\n<p>${aiData.summary || ''}</p>\n<h2>CORE COMPETENCIES</h2>\n${compTable}\n<h2>PROFESSIONAL EXPERIENCE</h2>\n${expHtml}`.trim();
+    let additionalSectionsHtml = '';
+    if (aiData.projects) {
+      additionalSectionsHtml += `\n<h2>TECHNICAL PROJECTS</h2>\n${aiData.projects}`;
+    }
+    if (aiData.education) {
+      additionalSectionsHtml += `\n<h2>EDUCATION & CERTIFICATIONS</h2>\n${aiData.education}`;
+    }
+
+    const finalHtml = `<h1>${skeleton.name || 'PATRICK MITCHELL'}</h1>\n<p class="contact">${skeleton.contact || 'Gladstone, MO | (515) 771-3320 | pmitchell.dev@gmail.com'}</p>\n<h2>PROFESSIONAL SUMMARY</h2>\n<p>${aiData.summary || ''}</p>\n<h2>CORE COMPETENCIES</h2>\n${compTable}\n<h2>PROFESSIONAL EXPERIENCE</h2>\n${expHtml}${additionalSectionsHtml}`.trim();
 
     jobs[idx].resume = finalHtml;
     jobs[idx].updatedAt = new Date().toISOString();
@@ -713,6 +729,14 @@ app.post('/api/jobs/:id/generate/cover-letter', async (req, res) => {
       masterDocText = (html || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
     }
 
+    let masterResumeText = '';
+    const resumePath = path.join(MASTER_DOCS_DIR, 'master_resume.docx');
+    if (fs.existsSync(resumePath)) {
+      const docxBuffer = fs.readFileSync(resumePath);
+      const { value: html } = await mammoth.convertToHtml({ buffer: docxBuffer });
+      masterResumeText = (html || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    }
+
     let jobContext = `JOB DETAILS:\n- Target Position: ${job.title || ''}\n- Company: ${job.company || ''}\n`;
     if (job.notes && job.notes.length > 0) {
       jobContext += `\nNOTES:\n`;
@@ -728,6 +752,7 @@ app.post('/api/jobs/:id/generate/cover-letter', async (req, res) => {
       .replace(/\{\{job\.title\}\}/g, job.title || '')
       .replace(/\{\{job\.company\}\}/g, job.company || '')
       .replace(/\{\{masterDocTextSection\}\}/g, masterDocTextSection)
+      .replace(/\{\{masterResumeText\}\}/g, masterResumeText || 'None provided')
       .replace(/\{\{jobContext\}\}/g, jobContext);
 
     const modelName = settings.openWebUiModel || 'gemini-flash-latest';
