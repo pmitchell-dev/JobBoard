@@ -961,6 +961,16 @@ kbd {
   background: rgba(99,102,241,0.04);
   box-shadow: inset 0 0 0 1px rgba(99,102,241,0.2);
 }
+.rich-editor.locked {
+  background: rgba(15,23,42,0.4);
+  opacity: 0.85;
+  cursor: not-allowed;
+}
+.rich-editor.locked:focus {
+  border-color: var(--border);
+  background: rgba(15,23,42,0.4);
+  box-shadow: none;
+}
 /* Placeholder via CSS data attribute */
 .rich-editor:empty::before {
   content: attr(data-placeholder);
