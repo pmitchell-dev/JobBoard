@@ -713,7 +713,7 @@ function downloadDoc(type) {
 
   // 2. Trigger standard GET request to backend server endpoint for direct download
   // This bypasses browser extension message errors (e.g. Chrono "Could not establish connection")
-  window.location.href = `/api/jobs/${job.id}/download-doc/${type}`;
+  window.location.href = `/api/jobs/${job.id}/download-doc/${type}?t=${Date.now()}`;
   toast(`📄 Downloading "${filename}"...`, 'success');
 }
 

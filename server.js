@@ -2489,6 +2489,9 @@ app.get('/api/jobs/:id/download-doc/:type', async (req, res) => {
 
   try {
     const docxBuffer = await generateDocxBuffer(html);
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
     res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodeURIComponent(safeFilename)}`);
     res.setHeader('Content-Length', docxBuffer.length);
