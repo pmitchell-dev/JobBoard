@@ -2312,14 +2312,18 @@ function switchChatTab(tab) {
   }
 }
 
-function resetResumePrompt() {
-  const el = document.getElementById('chatResumePrompt');
-  if (el) el.value = DEFAULT_RESUME_PROMPT;
-}
-
-function resetCoverLetterPrompt() {
-  const el = document.getElementById('chatCoverLetterPrompt');
-  if (el) el.value = DEFAULT_COVER_LETTER_PROMPT;
+async function fetchVersion() {
+  try {
+    const res = await fetch('/api/version');
+    const data = await res.json();
+    if (res.ok) {
+      toast(`Version: ${data.version}`, 'info');
+    } else {
+      toast(`Failed to fetch version: ${data.error}`, 'error');
+    }
+  } catch (err) {
+    toast(`Error: ${err.message}`, 'error');
+  }
 }
 
 function toggleChatSettings() {
@@ -2330,14 +2334,6 @@ function toggleChatSettings() {
   if (!modal.classList.contains('hidden')) {
     document.getElementById('chatApiKey').value = localStorage.getItem('jobboard_chat_apikey') || '';
     document.getElementById('chatSystemPrompt').value = localStorage.getItem('jobboard_chat_system_prompt') || '';
-    
-    let resPrompt = localStorage.getItem('jobboard_resume_prompt');
-    if (!resPrompt || resPrompt.trim() === '') resPrompt = DEFAULT_RESUME_PROMPT;
-    document.getElementById('chatResumePrompt').value = resPrompt;
-    
-    let covPrompt = localStorage.getItem('jobboard_cover_letter_prompt');
-    if (!covPrompt || covPrompt.trim() === '') covPrompt = DEFAULT_COVER_LETTER_PROMPT;
-    document.getElementById('chatCoverLetterPrompt').value = covPrompt;
     
     // Clear any previous verify connection result
     const resultEl = document.getElementById('verifyConnectionResult');
@@ -2410,8 +2406,6 @@ async function saveChatSettings() {
   const apiKey = document.getElementById('chatApiKey').value.trim();
   const model = document.getElementById('chatModelSelect').value;
   const systemPrompt = document.getElementById('chatSystemPrompt').value.trim();
-  const resumePrompt = document.getElementById('chatResumePrompt').value.trim();
-  const coverLetterPrompt = document.getElementById('chatCoverLetterPrompt').value.trim();
   const hostInput = document.getElementById('chatHost').value.trim();
   const portInput = document.getElementById('chatPort').value.trim();
 
@@ -2434,8 +2428,6 @@ async function saveChatSettings() {
   localStorage.setItem('jobboard_chat_apikey', apiKey);
   localStorage.setItem('jobboard_chat_model', model);
   localStorage.setItem('jobboard_chat_system_prompt', systemPrompt);
-  localStorage.setItem('jobboard_resume_prompt', resumePrompt);
-  localStorage.setItem('jobboard_cover_letter_prompt', coverLetterPrompt);
 
   const saveBtn = document.querySelector('#chatSettingsPane .btn-primary');
   const originalText = saveBtn ? saveBtn.textContent : 'Save Settings';
@@ -2454,9 +2446,7 @@ async function saveChatSettings() {
         openWebUiPort: port,
         openWebUiApiKey: apiKey,
         openWebUiModel: model,
-        openWebUiSystemPrompt: systemPrompt,
-        resumePrompt: resumePrompt,
-        coverLetterPrompt: coverLetterPrompt
+        openWebUiSystemPrompt: systemPrompt
       })
     });
     

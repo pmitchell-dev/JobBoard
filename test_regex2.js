@@ -1,0 +1,1 @@
+const html = `<ul><li>Item 1</li><li>Item 2</li></ul>`; const textWithNewlines = html.replace(/<br\s*\/?>/gi, "\n"); const blockRegex = /(<h[1-6][^>]*>[\s\S]*?<\/h[1-6]>|<p[^>]*>[\s\S]*?<\/p>|<li[^>]*>[\s\S]*?<\/li>|<div[^>]*>[\s\S]*?<\/div>)/gi; const blocks = textWithNewlines.split(blockRegex).filter(b => b && b.trim()); console.log(blocks);

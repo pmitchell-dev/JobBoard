@@ -285,6 +285,18 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// GET  /api/version - gets the latest git commit
+app.get('/api/version', (req, res) => {
+  const { exec } = require('child_process');
+  exec('git log -1 --format="%h - %s (%ci)"', { cwd: __dirname }, (error, stdout, stderr) => {
+    if (error) {
+      console.error('[Version] Error:', error);
+      return res.status(500).json({ error: 'Failed to fetch version' });
+    }
+    res.json({ version: stdout.trim() });
+  });
+});
+
 // GET  /api/jobs — list all jobs (optional ?status=applied filtering)
 app.get('/api/jobs', (req, res) => {
   let jobs = readJobs();
@@ -677,8 +689,7 @@ app.post('/api/jobs/:id/generate/resume', async (req, res) => {
     const jobBulletsTemplate = realJobs.map(j => `    "${j.key}": [\n      "Tailored bullet point 1...",\n      "Tailored bullet point 2..."\n    ]`).join(',\n');
 
     const systemRolePrompt = 'You are an expert career consultant and technical resume writer. You return ONLY valid JSON with no markdown, no explanation, no code fences.';
-    let promptTemplate = settings.resumePrompt || DEFAULT_RESUME_PROMPT;
-    const promptMessage = promptTemplate
+    const promptMessage = DEFAULT_RESUME_PROMPT
       .replace(/\{\{job\.title\}\}/g, job.title || '')
       .replace(/\{\{job\.company\}\}/g, job.company || '')
       .replace(/\{\{skeleton\.name\}\}/g, skeleton.name || 'PATRICK MITCHELL')
@@ -773,11 +784,10 @@ app.post('/api/jobs/:id/generate/cover-letter', async (req, res) => {
     }
 
     const systemRolePrompt = 'You are an AI cover letter generator. You generate ONLY a clean HTML Cover Letter. You NEVER include a resume or work history bullet points. You NEVER change job titles or fabricate unmentioned experience.';
-    let promptTemplate = settings.coverLetterPrompt || DEFAULT_COVER_LETTER_PROMPT;
     
     const masterDocTextSection = masterDocText ? `MASTER COVER LETTER TEMPLATE (style/tone guide):\n"""\n${masterDocText}\n"""` : '';
     
-    const promptMessage = promptTemplate
+    const promptMessage = DEFAULT_COVER_LETTER_PROMPT
       .replace(/\{\{job\.title\}\}/g, job.title || '')
       .replace(/\{\{job\.company\}\}/g, job.company || '')
       .replace(/\{\{masterDocTextSection\}\}/g, masterDocTextSection)
@@ -1429,8 +1439,6 @@ app.put('/api/settings', (req, res) => {
   if (req.body.openWebUiApiKey !== undefined) settings.openWebUiApiKey = req.body.openWebUiApiKey;
   if (req.body.openWebUiModel !== undefined) settings.openWebUiModel = req.body.openWebUiModel;
   if (req.body.openWebUiSystemPrompt !== undefined) settings.openWebUiSystemPrompt = req.body.openWebUiSystemPrompt;
-  if (req.body.resumePrompt !== undefined) settings.resumePrompt = req.body.resumePrompt;
-  if (req.body.coverLetterPrompt !== undefined) settings.coverLetterPrompt = req.body.coverLetterPrompt;
   
   try {
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));

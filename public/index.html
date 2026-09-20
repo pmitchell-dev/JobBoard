@@ -62,6 +62,10 @@
           <span class="btn-text-label">Import</span>
           <input type="file" id="importFileInput" accept=".jobboard,.zip" class="hidden" onchange="promptImport(event)" />
         </label>
+        <button class="btn-icon-text" id="versionHeaderBtn" onclick="fetchVersion()" title="Show Version">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+          <span class="btn-text-label">Version</span>
+        </button>
         <button class="btn-icon-text" id="settingsHeaderBtn" onclick="toggleChatSettings()" title="Settings">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
           <span class="btn-text-label">Settings</span>
@@ -737,16 +741,6 @@
         <div class="form-group">
           <label for="chatSystemPrompt">Copilot System Prompt Override</label>
           <textarea id="chatSystemPrompt" rows="3" placeholder="You are a helpful job search assistant..."></textarea>
-        </div>
-        <div class="form-group">
-          <label for="chatResumePrompt">Master Resume Prompt Template</label>
-          <textarea id="chatResumePrompt" rows="6" placeholder="Resume generation prompt..."></textarea>
-          <button class="btn-secondary btn-sm" style="margin-top: 4px;" onclick="resetResumePrompt()">Reset to Default</button>
-        </div>
-        <div class="form-group">
-          <label for="chatCoverLetterPrompt">Master Cover Letter Prompt Template</label>
-          <textarea id="chatCoverLetterPrompt" rows="6" placeholder="Cover letter generation prompt..."></textarea>
-          <button class="btn-secondary btn-sm" style="margin-top: 4px;" onclick="resetCoverLetterPrompt()">Reset to Default</button>
         </div>
       </div>
       <div class="modal-footer">
