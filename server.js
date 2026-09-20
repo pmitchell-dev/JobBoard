@@ -671,17 +671,15 @@ app.post('/api/jobs/:id/generate/resume', async (req, res) => {
 
     let compTable = '';
     if (aiData.competencies && aiData.competencies.length > 0) {
-      const thCells = aiData.competencies.map(c => `<th>${c.category}</th>`).join('');
-      const maxSkills = Math.max(...aiData.competencies.map(c => (c.skills || []).length));
-      let skillRows = '';
-      for (let i = 0; i < maxSkills; i++) {
-        const tdCells = aiData.competencies.map(c => {
-          const s = (c.skills && c.skills[i]) ? c.skills[i] : '';
-          return `<td>${s ? `• ${s}` : ''}</td>`;
-        }).join('');
-        skillRows += `<tr>${tdCells}</tr>\n`;
-      }
-      compTable = `<table class="competencies-table"><thead><tr>${thCells}</tr></thead><tbody>${skillRows}</tbody></table>`;
+      const skillRows = aiData.competencies.map(c => `<tr><td style="font-weight: 600; width: 30%; vertical-align: top; padding: 4px 8px 4px 0;">${c.category}</td><td style="vertical-align: top; padding: 4px 0;">${(c.skills || []).join(', ')}</td></tr>`).join('\n');
+      compTable = `<table class="competencies-table" style="width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 0.95em;">
+<thead>
+<tr><th style="text-align: left; padding-bottom: 6px; border-bottom: 1px solid #ccc; width: 30%;">Domain</th><th style="text-align: left; padding-bottom: 6px; border-bottom: 1px solid #ccc;">Technologies & Core Strengths</th></tr>
+</thead>
+<tbody>
+${skillRows}
+</tbody>
+</table>`;
     }
 
     const aiBullets = aiData.jobBullets || {};
@@ -695,13 +693,13 @@ app.post('/api/jobs/:id/generate/resume', async (req, res) => {
 
     let additionalSectionsHtml = '';
     if (aiData.projects) {
-      additionalSectionsHtml += `\n<h2>TECHNICAL PROJECTS</h2>\n${aiData.projects}`;
+      additionalSectionsHtml += `\n<h2>TECHNICAL PROJECTS & INFRASTRUCTURE INITIATIVES</h2>\n${aiData.projects}`;
     }
     if (aiData.education) {
       additionalSectionsHtml += `\n<h2>EDUCATION & CERTIFICATIONS</h2>\n${aiData.education}`;
     }
 
-    const finalHtml = `<h1>${skeleton.name || 'PATRICK MITCHELL'}</h1>\n<p class="contact">${skeleton.contact || 'Gladstone, MO | (515) 771-3320 | pmitchell.dev@gmail.com'}</p>\n<h2>PROFESSIONAL SUMMARY</h2>\n<p>${aiData.summary || ''}</p>\n<h2>CORE COMPETENCIES</h2>\n${compTable}\n<h2>PROFESSIONAL EXPERIENCE</h2>\n${expHtml}${additionalSectionsHtml}`.trim();
+    const finalHtml = `<h1>${skeleton.name || 'PATRICK MITCHELL'}</h1>\n<p class="contact">${skeleton.contact || 'Gladstone, MO | (515) 771-3320 | pmitchell.dev@gmail.com'}</p>\n<h2>PROFESSIONAL SUMMARY</h2>\n<p>${aiData.summary || ''}</p>\n<h2>CORE COMPETENCIES & TECHNICAL SKILLS</h2>\n${compTable}\n<h2>PROFESSIONAL EXPERIENCE</h2>\n${expHtml}${additionalSectionsHtml}`.trim();
 
     jobs[idx].resume = finalHtml;
     jobs[idx].updatedAt = new Date().toISOString();

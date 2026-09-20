@@ -2314,11 +2314,11 @@ function resetCoverLetterPrompt() {
 }
 
 function toggleChatSettings() {
-  const pane = document.getElementById('chatSettingsPane');
-  if (!pane) return;
-  pane.classList.toggle('hidden');
+  const modal = document.getElementById('chatSettingsModal');
+  if (!modal) return;
+  modal.classList.toggle('hidden');
   
-  if (!pane.classList.contains('hidden')) {
+  if (!modal.classList.contains('hidden')) {
     document.getElementById('chatApiKey').value = localStorage.getItem('jobboard_chat_apikey') || '';
     document.getElementById('chatSystemPrompt').value = localStorage.getItem('jobboard_chat_system_prompt') || '';
     
@@ -2460,8 +2460,8 @@ async function saveChatSettings() {
     openWebUiHost = data.openWebUiHost;
     openWebUiPort = data.openWebUiPort;
     
-    const pane = document.getElementById('chatSettingsPane');
-    if (pane) pane.classList.add('hidden');
+    const modal = document.getElementById('chatSettingsModal');
+    if (modal) modal.classList.add('hidden');
     toast('Copilot settings saved!', 'success');
     
     // If the WebUI iframe is loaded, update its src

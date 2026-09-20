@@ -62,6 +62,10 @@
           <span class="btn-text-label">Import</span>
           <input type="file" id="importFileInput" accept=".jobboard,.zip" class="hidden" onchange="promptImport(event)" />
         </label>
+        <button class="btn-icon-text" id="settingsHeaderBtn" onclick="toggleChatSettings()" title="Settings">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+          <span class="btn-text-label">Settings</span>
+        </button>
         <button class="btn-notepad" id="notepadBtn" onclick="toggleNotepad()" title="Quick Notes" aria-label="Open quick notes">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -681,18 +685,40 @@
         AI Copilot (Gemini API)
       </div>
       <div class="chat-header-actions">
-        <button class="chat-header-btn" id="chatSettingsBtn" onclick="toggleChatSettings()" title="Settings">⚙️</button>
         <button class="chat-close-btn" onclick="toggleChat()" aria-label="Close chat" title="Close">✕</button>
       </div>
     </div>
     
-    <!-- Settings Pane (Overlay within the panel) -->
-    <div class="chat-settings-pane hidden" id="chatSettingsPane">
-      <div class="chat-settings-header">
-        <strong>Copilot Settings (Gemini API)</strong>
-        <button class="chat-settings-close" onclick="toggleChatSettings()">✕</button>
+    <!-- Tab Content: Chat UI -->
+    <div class="chat-tab-content" id="chatTabContentUi" style="position: relative;">
+      <div class="chat-messages" id="chatMessages">
+        <div class="chat-msg assistant">
+          <div class="chat-msg-text">Hi! I'm your JobBoard AI Assistant, powered directly by Gemini API. I can help you summarize notes, draft emails, check your dashboard status, or write resumes. Ask me anything!</div>
+        </div>
       </div>
-      <div class="chat-settings-body">
+      
+      <!-- Autocomplete popup for prompts -->
+      <div class="chat-prompts-popup hidden" id="chatPromptsPopup"></div>
+      
+      <div class="chat-input-area">
+        <textarea id="chatInput" placeholder="Ask Copilot..." rows="1"></textarea>
+        <button class="chat-send-btn" id="chatSendBtn" onclick="sendChatMessage()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="22" y1="2" x2="11" y2="13"/>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay hidden" id="chatSettingsModal" onclick="handleOverlayClick(event,'chatSettingsModal')">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="chatSettingsModalTitle">
+      <div class="modal-header">
+        <h2 id="chatSettingsModalTitle" class="modal-title">Settings</h2>
+        <button class="modal-close-btn" onclick="toggleChatSettings()" aria-label="Close">&#x2715;</button>
+      </div>
+      <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
         <div class="form-group">
           <label>Webhost Gemini Service Endpoint</label>
           <input type="text" id="chatGeminiEndpoint" value="http://192.168.50.217:5050/api/query" readonly style="opacity:0.8; font-family: monospace; font-size: 0.78rem;" />
@@ -723,30 +749,8 @@
           <button class="btn-secondary btn-sm" style="margin-top: 4px;" onclick="resetCoverLetterPrompt()">Reset to Default</button>
         </div>
       </div>
-      <div class="chat-settings-footer">
+      <div class="modal-footer">
         <button class="btn-primary btn-sm" onclick="saveChatSettings()">Save Settings</button>
-      </div>
-    </div>
-
-    <!-- Tab Content: Chat UI -->
-    <div class="chat-tab-content" id="chatTabContentUi" style="position: relative;">
-      <div class="chat-messages" id="chatMessages">
-        <div class="chat-msg assistant">
-          <div class="chat-msg-text">Hi! I'm your JobBoard AI Assistant, powered directly by Gemini API. I can help you summarize notes, draft emails, check your dashboard status, or write resumes. Ask me anything!</div>
-        </div>
-      </div>
-      
-      <!-- Autocomplete popup for prompts -->
-      <div class="chat-prompts-popup hidden" id="chatPromptsPopup"></div>
-      
-      <div class="chat-input-area">
-        <textarea id="chatInput" placeholder="Ask Copilot..." rows="1"></textarea>
-        <button class="chat-send-btn" id="chatSendBtn" onclick="sendChatMessage()">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="22" y1="2" x2="11" y2="13"/>
-            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
-          </svg>
-        </button>
       </div>
     </div>
   </div>
