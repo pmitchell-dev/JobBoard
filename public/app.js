@@ -2332,8 +2332,10 @@ function toggleChatSettings() {
   modal.classList.toggle('hidden');
   
   if (!modal.classList.contains('hidden')) {
-    document.getElementById('chatApiKey').value = localStorage.getItem('jobboard_chat_apikey') || '';
-    document.getElementById('chatSystemPrompt').value = localStorage.getItem('jobboard_chat_system_prompt') || '';
+    const chatApiKeyEl = document.getElementById('chatApiKey');
+    if (chatApiKeyEl) chatApiKeyEl.value = localStorage.getItem('jobboard_chat_apikey') || '';
+    const chatSystemPromptEl = document.getElementById('chatSystemPrompt');
+    if (chatSystemPromptEl) chatSystemPromptEl.value = localStorage.getItem('jobboard_chat_system_prompt') || '';
     
     // Clear any previous verify connection result
     const resultEl = document.getElementById('verifyConnectionResult');
@@ -2403,21 +2405,16 @@ function isLocalHostOrIp(host) {
 }
 
 async function saveChatSettings() {
-  const apiKey = document.getElementById('chatApiKey').value.trim();
-  const model = document.getElementById('chatModelSelect').value;
-  const systemPrompt = document.getElementById('chatSystemPrompt').value.trim();
-  const hostInput = document.getElementById('chatHost').value.trim();
-  const portInput = document.getElementById('chatPort').value.trim();
-
-  if (!hostInput || !portInput) {
-    toast('Both Host/IP and Port are required.', 'error');
-    return;
-  }
-
-  if (!isLocalHostOrIp(hostInput)) {
-    toast('Host must be a local address (e.g. localhost, 127.0.0.1, or a private IP like 192.168.x.x).', 'error');
-    return;
-  }
+  const apiKeyEl = document.getElementById('chatApiKey');
+  const apiKey = apiKeyEl ? apiKeyEl.value.trim() : '';
+  const modelEl = document.getElementById('chatModelSelect');
+  const model = modelEl ? modelEl.value : 'gemini-flash-latest';
+  const systemPromptEl = document.getElementById('chatSystemPrompt');
+  const systemPrompt = systemPromptEl ? systemPromptEl.value.trim() : '';
+  const hostInputEl = document.getElementById('chatHost');
+  const hostInput = hostInputEl ? hostInputEl.value.trim() : '';
+  const portInputEl = document.getElementById('chatPort');
+  const portInput = portInputEl ? portInputEl.value.trim() : '';
 
   const port = parseInt(portInput, 10);
   if (isNaN(port) || port < 1 || port > 65535) {

@@ -617,8 +617,13 @@ app.post('/api/jobs/:id/generate/resume', async (req, res) => {
     const headerSec = sections.find(s => s.title === 'HEADER');
     if (headerSec) {
       const ps = headerSec.html.split(/<\/p>/i).map(p => stripTags(p)).filter(Boolean);
-      if (ps.length > 0) skeleton.name = ps[0];
-      if (ps.length > 1) skeleton.contact = ps.slice(1).join(' | ');
+      if (ps.length > 0) {
+        skeleton.name = ps[0].length < 150 ? ps[0] : 'CANDIDATE NAME';
+      }
+      if (ps.length > 1) {
+        const contactStr = ps.slice(1).join(' | ');
+        skeleton.contact = contactStr.length < 500 ? contactStr : 'CANDIDATE CONTACT INFO';
+      }
     }
 
     const expSec = sections.find(s => ['EXPERIENCE', 'WORK', 'EMPLOYMENT', 'HISTORY'].some(k => s.title.includes(k)));
