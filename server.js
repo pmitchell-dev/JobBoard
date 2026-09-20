@@ -57,11 +57,11 @@ Master Bullet Points:
 
 CRITICAL INSTRUCTION 1: You MUST retain the 'Education', 'Certifications', 'Projects', 'Technical Projects', and any similar academic or project sections exactly as they appear in the master bullet points (or tailored if appropriate). Do NOT omit them from the final JSON. If a project doesn't exist then leave it out of the final modified resume. TECHNICAL PROJECTS
 No professional project history provided.
-CRITICAL INSTRUCTION 2: Do NOT output the entire resume as a single string. You MUST strictly adhere to the JSON structure provided below. Do NOT include the candidate's name or contact info in the "summary" field. The "summary" field must ONLY contain the 3-5 sentence paragraph.
+CRITICAL INSTRUCTION 2: Do NOT output the entire resume as a single string. You MUST strictly adhere to the JSON structure provided below. Do NOT include the candidate's name or contact info. The "professional_summary_paragraph" field must ONLY contain the 3-5 sentence paragraph.
 
 Return ONLY this JSON object:
 {
-  "summary": "3-5 sentence tailored professional summary paragraph. No markdown. No headers.",
+  "professional_summary_paragraph": "Write EXACTLY 3-5 sentences summarizing the candidate for this role. DO NOT INCLUDE THE CANDIDATE'S NAME OR CONTACT INFO. DO NOT PUT THE WHOLE RESUME HERE.",
   "competencies": [
     {"category": "Systems & Automation", "skills": ["Skill A", "Skill B"]},
     {"category": "Virtualization & Storage", "skills": ["Skill A"]}
@@ -741,7 +741,7 @@ ${skillRows}
       additionalSectionsHtml += `\n<h2>EDUCATION & CERTIFICATIONS</h2>\n${aiData.education}`;
     }
 
-    const finalHtml = `<h1>${skeleton.name || 'PATRICK MITCHELL'}</h1>\n<p class="contact">${skeleton.contact || 'Gladstone, MO | (515) 771-3320 | pmitchell.dev@gmail.com'}</p>\n<h2>PROFESSIONAL SUMMARY</h2>\n<p>${aiData.summary || ''}</p>\n<h2>CORE COMPETENCIES & TECHNICAL SKILLS</h2>\n${compTable}\n<h2>PROFESSIONAL EXPERIENCE</h2>\n${expHtml}${additionalSectionsHtml}`.trim();
+    const finalHtml = `<h1>${skeleton.name || 'PATRICK MITCHELL'}</h1>\n<p class="contact">${skeleton.contact || 'Gladstone, MO | (515) 771-3320 | pmitchell.dev@gmail.com'}</p>\n<h2>PROFESSIONAL SUMMARY</h2>\n<p>${aiData.professional_summary_paragraph || aiData.summary || ''}</p>\n<h2>CORE COMPETENCIES & TECHNICAL SKILLS</h2>\n${compTable}\n<h2>PROFESSIONAL EXPERIENCE</h2>\n${expHtml}${additionalSectionsHtml}`.trim();
 
     jobs[idx].resume = finalHtml;
     jobs[idx].updatedAt = new Date().toISOString();
