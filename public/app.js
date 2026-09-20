@@ -493,18 +493,12 @@ function switchDocSubTab(tab) {
 
 // ── Rich-text toolbar command ─────────────────────────────────────────────────
 function execFmt(cmd, val) {
+  document.execCommand(cmd, false, val || null);
+  // Fire oninput on whichever editor is active so auto-save triggers
   const modal = document.getElementById('editModal');
   const active = (modal && modal.contains(document.activeElement))
     ? document.activeElement.closest('.rich-editor')
     : null;
-
-  if (active && active.getAttribute('contenteditable') === 'false') {
-    toast('Unlock the editor to format text.', 'warning');
-    return;
-  }
-
-  document.execCommand(cmd, false, val || null);
-  // Fire oninput on whichever editor is active so auto-save triggers
   if (active) active.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
@@ -611,28 +605,6 @@ function cleanWordHtml(html) {
 
 function escapeHtml(str) {
   return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-function toggleEditorLock(type) {
-  const editorId = type === 'resume' ? 'resumeEditor' : 'coverEditor';
-  const btnId = type === 'resume' ? 'btnLockResume' : 'btnLockCover';
-  const editor = document.getElementById(editorId);
-  const btn = document.getElementById(btnId);
-  
-  const isLocked = editor.getAttribute('contenteditable') === 'false';
-  
-  if (isLocked) {
-    editor.setAttribute('contenteditable', 'true');
-    editor.classList.remove('locked');
-    btn.innerHTML = '🔒 Lock';
-    btn.title = 'Lock Editor';
-    toast(`${type === 'resume' ? 'Resume' : 'Cover Letter'} editor unlocked for manual editing.`, 'info');
-  } else {
-    editor.setAttribute('contenteditable', 'false');
-    editor.classList.add('locked');
-    btn.innerHTML = '🔓 Unlock';
-    btn.title = 'Unlock Editor';
-    toast(`${type === 'resume' ? 'Resume' : 'Cover Letter'} editor locked to prevent accidental changes.`, 'info');
-  }
 }
 
 function clearDocEditor(type) {
