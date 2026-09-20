@@ -40,7 +40,38 @@ if (!fs.existsSync(MASTER_DOCS_META_FILE)) {
   fs.writeFileSync(MASTER_DOCS_META_FILE, JSON.stringify({ resume: null, coverLetter: null }, null, 2));
 }
 
-const DEFAULT_RESUME_PROMPT = `Tailor the resume bullet points and summary for the position: "{{job.title}}" at "{{job.company}}".\n\nCANDIDATE REAL WORK HISTORY:\nName: {{skeleton.name}}\nContact: {{skeleton.contact}}\n\nPositions to Tailor Bullets For:\n{{roleList}}\n\nMaster Bullet Points:\n{{bulletContext}}\n\nEducation History:\n{{educationHtml}}\n\nProject History:\n{{projectsHtml}}\n\n{{jobContext}}\n\nCRITICAL INSTRUCTION: You MUST retain the 'Education', 'Certifications', 'Projects', 'Technical Projects', and any similar academic or project sections exactly as they appear in the master bullet points (or tailored if appropriate). Do NOT omit them from the final JSON. If a project doesn't exist then leave it out of the final modified resume. TECHNICAL PROJECTS\nNo professional project history provided.\n\nReturn ONLY this JSON object:\n{\n  "summary": "3-5 sentence tailored professional summary paragraph.",\n  "competencies": [\n    {"category": "Systems & Automation", "skills": ["Skill A", "Skill B"]},\n    {"category": "Virtualization & Storage", "skills": ["Skill A"]}\n  ],\n  "jobBullets": {\n{{jobBulletsTemplate}}\n  },\n  "education": "HTML formatted string containing the education section (e.g. <h3>Degree</h3><p>University, Year</p>). Include exactly as provided or tailored for the role.",\n  "projects": "HTML formatted string containing the projects section (e.g. <h3>Project Name</h3><p>Description</p>). Include exactly as provided or tailored for the role."\n}`;
+const DEFAULT_RESUME_PROMPT = `Tailor the resume bullet points and summary for the position: 
+"{{job.title}}" at "{{job.company}}".
+
+CANDIDATE REAL WORK HISTORY:
+Name: {{skeleton.name}}
+Contact: {{skeleton.contact}}
+
+Positions to Tailor Bullets For:
+{{roleList}}
+
+Master Bullet Points:
+{{bulletContext}}
+
+{{jobContext}}
+
+CRITICAL INSTRUCTION 1: You MUST retain the 'Education', 'Certifications', 'Projects', 'Technical Projects', and any similar academic or project sections exactly as they appear in the master bullet points (or tailored if appropriate). Do NOT omit them from the final JSON. If a project doesn't exist then leave it out of the final modified resume. TECHNICAL PROJECTS
+No professional project history provided.
+CRITICAL INSTRUCTION 2: Do NOT output the entire resume as a single string. You MUST strictly adhere to the JSON structure provided below. Do NOT include the candidate's name or contact info in the "summary" field. The "summary" field must ONLY contain the 3-5 sentence paragraph.
+
+Return ONLY this JSON object:
+{
+  "summary": "3-5 sentence tailored professional summary paragraph. No markdown. No headers.",
+  "competencies": [
+    {"category": "Systems & Automation", "skills": ["Skill A", "Skill B"]},
+    {"category": "Virtualization & Storage", "skills": ["Skill A"]}
+  ],
+  "jobBullets": {
+{{jobBulletsTemplate}}
+  },
+  "education": "HTML formatted string containing the education section (e.g. <h3>Degree</h3><p>University, Year</p>). Include exactly as provided or tailored for the role.",
+  "projects": "HTML formatted string containing the projects section (e.g. <h3>Project Name</h3><p>Description</p>). Include exactly as provided or tailored for the role."
+}`;
 
 const DEFAULT_COVER_LETTER_PROMPT = `You are an expert career consultant. Write a compelling, tailored COVER LETTER for the position of "{{job.title}}" at "{{job.company}}".\n\n{{masterDocTextSection}}\n\nCandidate Resume Background:\n{{masterResumeText}}\n\n{{jobContext}}\n\nSTRICT OUTPUT REQUIREMENTS:\n1. Generate ONLY the Cover Letter. Do NOT include a resume or work history.\n2. DO NOT ALTER PREVIOUS JOB TITLES OR FABRICATE EXPERIENCE. Draw from the provided resume background (work history, education, and technical projects) to highlight relevant qualifications.\n3. Address the hiring team at {{job.company}} regarding the {{job.title}} role.\n4. Output clean semantic HTML (use <h1>, <h2>, <p>, <ul>, <li>, <strong>, <em>).\n5. Do NOT wrap in markdown fences. Return ONLY raw HTML body content.`;
 
@@ -2391,7 +2422,12 @@ function createParagraphXml(innerHtml, opts = {}) {
 
 function parseInlineRuns(text, isH1, isH2, isH3) {
   let runs = '';
-  const parts = text.split(/(<\/?(?:strong|b|em|i|u)>)/gi);
+  // Convert basic markdown bold/italic to HTML before parsing
+  const htmlText = text
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>');
+    
+  const parts = htmlText.split(/(<\/?(?:strong|b|em|i|u)>)/gi);
   let isBold = isH1 || isH2 || isH3;
   let isItalic = false;
   let isUnderline = false;

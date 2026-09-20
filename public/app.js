@@ -6,7 +6,7 @@ let pendingAddScreenshot = null;
 let activeFilter = 'all';  // 'all' | 'today' | 'yesterday' | '7d' | '14d' | '30d' | 'custom'
 
 // Reset generative prompts to default templates
-const DEFAULT_RESUME_PROMPT = `Tailor the resume bullet points and summary for the position: "{{job.title}}" at "{{job.company}}".\n\nCANDIDATE REAL WORK HISTORY:\nName: {{skeleton.name}}\nContact: {{skeleton.contact}}\n\nPositions to Tailor Bullets For:\n{{roleList}}\n\nMaster Bullet Points:\n{{bulletContext}}\n\n{{jobContext}}\n\nCRITICAL INSTRUCTION: You MUST retain the 'Education', 'Certifications', 'Projects', 'Technical Projects', and any similar academic or project sections exactly as they appear in the master bullet points (or tailored if appropriate). Do NOT omit them from the final JSON. If a project doesn't exist then leave it out of the final modified resume. TECHNICAL PROJECTS\nNo professional project history provided.\n\nReturn ONLY this JSON object:\n{\n  "summary": "3-5 sentence tailored professional summary paragraph.",\n  "competencies": [\n    {"category": "Systems & Automation", "skills": ["Skill A", "Skill B"]},\n    {"category": "Virtualization & Storage", "skills": ["Skill A"]}\n  ],\n  "jobBullets": {\n{{jobBulletsTemplate}}\n  }\n}`;
+const DEFAULT_RESUME_PROMPT = `Tailor the resume bullet points and summary for the position: "{{job.title}}" at "{{job.company}}".\n\nCANDIDATE REAL WORK HISTORY:\nName: {{skeleton.name}}\nContact: {{skeleton.contact}}\n\nPositions to Tailor Bullets For:\n{{roleList}}\n\nMaster Bullet Points:\n{{bulletContext}}\n\n{{jobContext}}\n\nCRITICAL INSTRUCTION 1: You MUST retain the 'Education', 'Certifications', 'Projects', 'Technical Projects', and any similar academic or project sections exactly as they appear in the master bullet points (or tailored if appropriate). Do NOT omit them from the final JSON. If a project doesn't exist then leave it out of the final modified resume. TECHNICAL PROJECTS\nNo professional project history provided.\nCRITICAL INSTRUCTION 2: Do NOT output the entire resume as a single string. You MUST strictly adhere to the JSON structure provided below. Do NOT include the candidate's name or contact info in the "summary" field. The "summary" field must ONLY contain the 3-5 sentence paragraph.\n\nReturn ONLY this JSON object:\n{\n  "summary": "3-5 sentence tailored professional summary paragraph. No markdown. No headers.",\n  "competencies": [\n    {"category": "Systems & Automation", "skills": ["Skill A", "Skill B"]},\n    {"category": "Virtualization & Storage", "skills": ["Skill A"]}\n  ],\n  "jobBullets": {\n{{jobBulletsTemplate}}\n  }\n}`;
 
 const DEFAULT_COVER_LETTER_PROMPT = `You are an expert career consultant. Write a compelling, tailored COVER LETTER for the position of "{{job.title}}" at "{{job.company}}".\n\n{{masterDocTextSection}}\n\n{{jobContext}}\n\nSTRICT OUTPUT REQUIREMENTS:\n1. Generate ONLY the Cover Letter. Do NOT include a resume or work history.\n2. DO NOT ALTER PREVIOUS JOB TITLES OR FABRICATE EXPERIENCE. Draw from the provided work history, education, and technical projects to highlight relevant qualifications.\n3. Address the hiring team at {{job.company}} regarding the {{job.title}} role.\n4. Output clean semantic HTML (use <h1>, <h2>, <p>, <ul>, <li>, <strong>, <em>).\n5. Do NOT wrap in markdown fences. Return ONLY raw HTML body content.`;
 
@@ -565,8 +565,17 @@ function cleanWordHtml(html) {
 
   // Walk all elements and strip inline styles + class/id noise
   doc.querySelectorAll('*').forEach(el => {
-    // Keep structural elements clean, strip decoration
-    el.removeAttribute('class');
+    // Keep structural elements clean, strip decoration but preserve critical formatting classes
+    const className = el.getAttribute('class');
+    if (className) {
+      const keepClasses = ['job-header', 'job-sub', 'contact', 'competencies-table'];
+      const kept = className.split(/\s+/).filter(c => keepClasses.includes(c));
+      if (kept.length > 0) {
+        el.setAttribute('class', kept.join(' '));
+      } else {
+        el.removeAttribute('class');
+      }
+    }
     el.removeAttribute('id');
     el.removeAttribute('lang');
     el.removeAttribute('xml:lang');
