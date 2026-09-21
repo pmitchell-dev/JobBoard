@@ -139,7 +139,7 @@ function setFilter(key) {
     // Default custom range to last 7 days if blank
     if (!document.getElementById('filterFrom').value) {
       const d = new Date(); d.setDate(d.getDate() - 7);
-      document.getElementById('filterFrom').value = d.toISOString().split('T')[0];
+      document.getElementById('filterFrom').value = localDateStr(d);
       document.getElementById('filterTo').value   = todayStr();
     }
   } else {
@@ -162,20 +162,20 @@ function getFilterDateRange() {
     case 'today':     return { from: today, to: today };
     case 'yesterday': {
       const d = new Date(now); d.setDate(d.getDate() - 1);
-      const s = d.toISOString().split('T')[0];
+      const s = localDateStr(d);
       return { from: s, to: s };
     }
     case '7d': {
       const d = new Date(now); d.setDate(d.getDate() - 6);
-      return { from: d.toISOString().split('T')[0], to: today };
+      return { from: localDateStr(d), to: today };
     }
     case '14d': {
       const d = new Date(now); d.setDate(d.getDate() - 13);
-      return { from: d.toISOString().split('T')[0], to: today };
+      return { from: localDateStr(d), to: today };
     }
     case '30d': {
       const d = new Date(now); d.setDate(d.getDate() - 29);
-      return { from: d.toISOString().split('T')[0], to: today };
+      return { from: localDateStr(d), to: today };
     }
     case 'custom':
       return {
@@ -967,7 +967,7 @@ function parseEmlDate(dateStr) {
   if (!dateStr) return todayStr();
   try {
     const d = new Date(dateStr);
-    if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+    if (!isNaN(d.getTime())) return localDateStr(d);
   } catch { /**/ }
   return todayStr();
 }
@@ -1635,8 +1635,13 @@ function esc(str) {
   return String(str || '')
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
     .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+function localDateStr(d) {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
-function todayStr() { return new Date().toISOString().split('T')[0]; }
+function todayStr() { return localDateStr(new Date()); }
 function fmtDate(d) {
   if (!d) return '—';
   const [y,m,day] = d.split('-');
