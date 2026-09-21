@@ -621,8 +621,16 @@ app.post('/api/jobs/:id/generate/resume', async (req, res) => {
         skeleton.name = ps[0].length < 150 ? ps[0] : 'CANDIDATE NAME';
       }
       if (ps.length > 1) {
-        const contactStr = ps.slice(1).join(' | ');
-        skeleton.contact = contactStr.length < 500 ? contactStr : 'CANDIDATE CONTACT INFO';
+        let contactLines = [];
+        for (let i = 1; i < ps.length; i++) {
+          const line = ps[i].trim();
+          if (!line) continue;
+          if (line.length < 50 && isSectionHeader(line)) break;
+          if (contactLines.join(' | ').length + line.length > 250) break;
+          contactLines.push(line);
+        }
+        skeleton.contact = contactLines.join(' | ');
+        if (!skeleton.contact) skeleton.contact = 'CANDIDATE CONTACT INFO';
       }
     }
 
