@@ -49,6 +49,12 @@
       </div>
 
       <div class="header-actions">
+        <!-- Private Mode Toggle -->
+        <label class="btn-icon-text" title="Enable Private Mode for screenshots" style="cursor: pointer; gap: 6px; margin-right: 12px; color: var(--text-muted);">
+          <input type="checkbox" id="privateModeToggle" onchange="document.body.classList.toggle('private-mode', this.checked)" style="accent-color: #6366f1; cursor: pointer;">
+          <span style="font-size: 0.75rem; font-weight: 500;">Private Mode</span>
+        </label>
+
         <div class="backup-indicator" id="backupIndicator" onclick="openBackupRestoreModal()" title="View & Restore Server Backups" style="cursor: pointer;">
           <span class="backup-dot"></span>
           <span class="backup-label">Backed up</span>

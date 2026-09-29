@@ -1705,7 +1705,32 @@ kbd {
   color: #fef08a;
   animation: pulse-star 2s infinite ease-in-out;
 }
+}
 @keyframes pulse-star {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.7; transform: scale(0.9); }
+}
+
+/* ── Private Mode (Screenshot safe) ─────────────────────────────────────── */
+body.private-mode .kanban-card h3,
+body.private-mode .kanban-card .comp,
+body.private-mode .kanban-card .meta,
+body.private-mode .kanban-card .footer-date,
+body.private-mode .kanban-card p,
+body.private-mode .kanban-card span,
+body.private-mode .job-details-modal h2,
+body.private-mode .job-details-modal .value,
+body.private-mode .job-details-modal .tags-wrap,
+body.private-mode .stats-strip .stat-chip .count {
+    filter: blur(5px);
+    opacity: 0.7;
+    user-select: none;
+    pointer-events: none;
+    transition: filter 0.3s ease;
+}
+
+body.private-mode .master-docs-body {
+    filter: blur(5px);
+    opacity: 0.7;
+    pointer-events: none;
 }
