@@ -1729,6 +1729,32 @@ body.private-mode .stats-strip .stat-chip .count {
     transition: filter 0.3s ease;
 }
 
+body.private-mode .card-company,
+body.private-mode .card-title,
+body.private-mode .card-meta,
+body.private-mode .card-date,
+body.private-mode .edit-title-input,
+body.private-mode .edit-company-input,
+body.private-mode #editUrl,
+body.private-mode .note-text,
+body.private-mode #newNoteText,
+body.private-mode .email-from,
+body.private-mode .email-subj,
+body.private-mode .email-body-text,
+body.private-mode #emailFrom,
+body.private-mode #emailSubject,
+body.private-mode #emailBody,
+body.private-mode .rich-editor,
+body.private-mode .attach-item-name,
+body.private-mode .stat-chip .count {
+    filter: blur(5px);
+    opacity: 0.7;
+    user-select: none;
+    pointer-events: none;
+    transition: filter 0.3s ease;
+}
+
+body.private-mode .master-doc-card-header,
 body.private-mode .master-docs-body {
     filter: blur(5px);
     opacity: 0.7;
